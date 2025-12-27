@@ -6,7 +6,7 @@ const fn sqrt_const(x: f32) -> f32 {
     if x >= 0.0 {
         let mut result = x;
         let mut i = 0;
-        while i < 10000 {
+        while i < 1000000 {
             result = 0.5 * (result + x / result);
             i += 1;
         }
@@ -20,7 +20,7 @@ const fn sqrt_const(x: f32) -> f32 {
 const RED: Color = Color::hsl(360. * 2.0, 0.95, 0.7);
 const GRAVITATION: f32 = 6.674e-11;
 const MASS: f32 = 1000000000000000.0;
-const VELOCITY: f32 = sqrt_const(GRAVITATION * MASS / 100.0);
+const VELOCITY: f32 = sqrt_const(GRAVITATION * MASS / 200.0);
 
 #[derive(Component, Default, Clone)]
 struct Planet {
@@ -85,7 +85,6 @@ fn update(query: Query<(&mut Planet, &mut Transform), With<Mesh2d>>, time: Res<T
         planet.velocity += a * time.delta_secs();
         let v = planet.velocity.to_owned();
         transform.translation += v * time.delta_secs();
-        println!("id:{},translation:{}", planet.id, transform.translation);
     }
 }
 
