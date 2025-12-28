@@ -19,8 +19,9 @@ const fn sqrt_const(x: f32) -> f32 {
 
 const RED: Color = Color::hsl(360. * 2.0, 0.95, 0.7);
 const GRAVITATION: f32 = 6.674e-11;
-const MASS: f32 = 1000000000000000.0;
-const VELOCITY: f32 = sqrt_const(GRAVITATION * MASS / 200.0);
+const MASS: f32 = 1000000000000000.0 * 100.0;
+const RADIUS: f32 = 50.0;
+const VELOCITY: f32 = sqrt_const(GRAVITATION * MASS / (4.0 * RADIUS));
 
 #[derive(Component, Default, Clone)]
 struct Planet {
@@ -46,7 +47,7 @@ fn setup(
         },
         Mesh2d(meshes.add(Circle::new(10.0))),
         MeshMaterial2d(material.add(RED)),
-        Transform::from_xyz(-50.0, 0.0, 0.0),
+        Transform::from_xyz(-RADIUS, 0.0, 0.0),
     ));
 
     commands.spawn((
@@ -58,11 +59,11 @@ fn setup(
         },
         Mesh2d(meshes.add(Circle::new(10.0))),
         MeshMaterial2d(material.add(RED)),
-        Transform::from_xyz(50.0, 0.0, 0.0),
+        Transform::from_xyz(RADIUS, 0.0, 0.0),
     ));
 }
 
-fn update(query: Query<(&mut Planet, &mut Transform), With<Mesh2d>>, time: Res<Time>) {
+fn update_planet(query: Query<(&mut Planet, &mut Transform), With<(Mesh2d)>>, time: Res<Time>) {
     let components_copy = query
         .iter()
         .map(|(p, t)| (p.to_owned(), t.to_owned()))
@@ -76,6 +77,11 @@ fn update(query: Query<(&mut Planet, &mut Transform), With<Mesh2d>>, time: Res<T
                 let distance = transform.translation.distance(t.translation);
                 let d = t.translation - transform.translation;
                 let accelerate_direction = d / d.length();
+                println!(
+                    "id:{},distance:{}",
+                    planet.id,
+                    transform.translation.distance(t.translation)
+                );
                 accelerate_res + accelerate_direction * GRAVITATION * p.mass / (distance * distance)
             });
 
@@ -94,7 +100,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            update.run_if(input_toggle_active(true, KeyCode::KeyT)),
+            update_planet.run_if(input_toggle_active(true, KeyCode::KeyT)),
         )
         .run();
 }
