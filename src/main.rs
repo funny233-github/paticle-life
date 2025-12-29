@@ -117,7 +117,7 @@ impl Particle {
                 velocity: Vec3::default(),
                 particle_type: particle_type.clone(),
             },
-            Mesh2d(meshes.add(Circle::new(10.0))),
+            Mesh2d(meshes.add(Circle::new(5.0))),
             match particle_type {
                 ParticleType::Red => MeshMaterial2d(material.add(RED)),
                 ParticleType::Blue => MeshMaterial2d(material.add(BLUE)),
@@ -146,24 +146,29 @@ fn setup(
         println!("Could not load {}, using default interactions", csv_path);
     }
 
-    // 创建多个粒子用于测试
-    let particle_positions = [
-        (0.0, 0.0),
-        (100.0, 0.0),
-        (-100.0, 0.0),
-        (0.0, 100.0),
-        (0.0, -100.0),
-    ];
+    // 随机生成粒子
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
 
-    let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
+    let particle_types = [ParticleType::Red, ParticleType::Blue];
+    let num_particles = 1000; // 粒子数量
+    let map_width = 800.0; // 地图宽度
+    let map_height = 600.0; // 地图高度
 
-    for (i, (x, y)) in particle_positions.iter().enumerate() {
+    for i in 0..num_particles {
+        // 随机位置
+        let x = rng.gen_range(-map_width / 2.0..map_width / 2.0);
+        let y = rng.gen_range(-map_height / 2.0..map_height / 2.0);
+
+        // 随机粒子类型
+        let particle_type = particle_types[rng.gen_range(0..particle_types.len())].clone();
+
         Particle::spawn(
             &mut commands,
             &mut meshes,
             &mut material,
-            Transform::from_xyz(*x, *y, 0.0),
-            particle_types[i % particle_types.len()].clone(),
+            Transform::from_xyz(x, y, 0.0),
+            particle_type,
             i,
         );
     }
@@ -192,29 +197,35 @@ fn update_particle(
                 let interaction =
                     interaction_table.get_interaction(my_type.clone(), other_type.clone());
 
-                // 计算距离和方向（指向对方）
                 let distance = transform.translation.distance(t.translation);
                 let direction = (t.translation - transform.translation) / distance;
 
-                // 读取相互作用向量中的第一个分量作为作用强度
-                // 正值表示吸引（沿着方向），负值表示排斥（反向）
                 let strength = interaction;
 
-                // 距离衰减因子（类似引力的平方反比或线性反比）
-                let distance_factor = if distance > 200.0 {
+                let d = 20.0;
+
+                let distance_factor = if distance >= 3.0 * d {
                     0.0
+                } else if distance >= 2.0 * d {
+                    (3.0 * d - distance) / d
+                } else if distance > d {
+                    (distance - d) / d
                 } else {
-                    (200.0 - distance) / 200.0
+                    0.0
                 };
 
-                // 计算实际加速度：强度 * 距离衰减 * 方向
-                let actual_acceleration = direction * strength * distance_factor;
+                let actual_acceleration = if distance > d {
+                    direction * strength * distance_factor
+                } else {
+                    direction * -0.5 * (d - distance)
+                };
 
                 acc + actual_acceleration
             });
 
         // 更新速度：v = v + a * dt
         particle.velocity += acceleration * time.delta_secs();
+        particle.velocity *= 0.99;
 
         // 更新位置：p = p + v * dt
         transform.translation += particle.velocity * time.delta_secs();
