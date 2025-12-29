@@ -174,6 +174,58 @@ fn setup(
     }
 
     commands.spawn(Camera2d);
+    commands.spawn((
+        Text::new("Press T to toggle update"),
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(12),
+            left: px(12),
+            ..default()
+        },
+    ));
+}
+
+fn move_camera(
+    mut camera: Query<(&mut Transform, &Camera), With<Camera2d>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+) {
+    let Ok((mut transform, _camera)) = camera.single_mut() else {
+        return;
+    };
+    let mut direction = Vec3::ZERO;
+
+    let speed = 400.0;
+    let zoom_speed = 1.0;
+    let current_scale = transform.scale;
+
+    if keys.pressed(KeyCode::KeyW) {
+        direction.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        direction.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        direction.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        direction.x += 1.0;
+    }
+
+    if direction != Vec3::ZERO {
+        transform.translation += direction.normalize() * speed * current_scale * time.delta_secs();
+    }
+
+    // 缩放控制 - 通过改变摄像机的 scale
+    if keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadAdd) {
+        transform.scale *= 1.0 + zoom_speed * time.delta_secs();
+    }
+    if keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadSubtract) {
+        transform.scale *= 1.0 - zoom_speed * time.delta_secs();
+    }
+
+    // 限制缩放范围
+    transform.scale = transform.scale.clamp(Vec3::splat(0.1), Vec3::splat(5.0));
 }
 
 fn update_particle(
@@ -225,7 +277,7 @@ fn update_particle(
 
         // 更新速度：v = v + a * dt
         particle.velocity += acceleration * time.delta_secs();
-        particle.velocity *= 0.99;
+        particle.velocity *= 0.995;
 
         // 更新位置：p = p + v * dt
         transform.translation += particle.velocity * time.delta_secs();
@@ -239,7 +291,10 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            (update_particle.run_if(input_toggle_active(true, KeyCode::KeyT)),),
+            (
+                update_particle.run_if(input_toggle_active(true, KeyCode::KeyT)),
+                move_camera,
+            ),
         )
         .run();
 }
