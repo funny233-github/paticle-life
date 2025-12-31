@@ -1,6 +1,6 @@
 use bevy::{input::common_conditions::input_toggle_active, prelude::*};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -45,7 +45,7 @@ impl FromStr for ParticleType {
     }
 }
 
-#[derive(Component, Default, Clone)]
+#[derive(Component, Debug, Default, Clone)]
 pub struct Particle {
     pub id: usize,
     pub velocity: Vec3,
@@ -67,7 +67,7 @@ impl Particle {
                 velocity: Vec3::default(),
                 particle_type: particle_type.clone(),
             },
-            Mesh2d(meshes.add(Circle::new(5.0))),
+            Mesh2d(meshes.add(Circle::new(10.0))),
             match particle_type {
                 ParticleType::Red => MeshMaterial2d(material.add(RED)),
                 ParticleType::Blue => MeshMaterial2d(material.add(BLUE)),
@@ -135,9 +135,9 @@ impl ParticleInteractionTable {
         for result in rdr.deserialize() {
             let record: InteractionRecord = result?;
 
-            let target_type = ParticleType::from_str(&record.target).unwrap();
+            let target_type = ParticleType::from_str(&record.target)?;
 
-            let source_type = ParticleType::from_str(&record.source).unwrap();
+            let source_type = ParticleType::from_str(&record.source)?;
 
             let acceleration = record.strength;
 
@@ -154,25 +154,86 @@ impl Default for ParticleInteractionTable {
     }
 }
 
-pub struct ParticlePlugin;
+#[derive(Debug, Resource, Clone)]
+pub struct ParticleSetupConfig {
+    pub num_particles: usize,
+    pub map_width: f32,
+    pub map_height: f32,
+}
+
+impl Default for ParticleSetupConfig {
+    fn default() -> Self {
+        Self {
+            num_particles: 1000,
+            map_width: 1000.0,
+            map_height: 1000.0,
+        }
+    }
+}
+
+#[derive(Debug, Resource, Clone)]
+pub struct ParticleInteractionDistanceLayer {
+    pub d1: f32,
+    pub d2: f32,
+    pub d3: f32,
+}
+
+impl Default for ParticleInteractionDistanceLayer {
+    fn default() -> Self {
+        Self {
+            d1: 30.0,
+            d2: 65.0,
+            d3: 100.0,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ParticlePlugin {
+    pub setup_config: ParticleSetupConfig,
+    pub interaction_distance_layer: ParticleInteractionDistanceLayer,
+}
 
 fn update_particle(
     query: Query<(&mut Particle, &mut Transform), With<Mesh2d>>,
     interaction_table: Res<ParticleInteractionTable>,
+    layer: Res<ParticleInteractionDistanceLayer>,
     time: Res<Time>,
 ) {
-    let components_copy = query
-        .iter()
-        .map(|(p, t)| (p.to_owned(), t.to_owned()))
-        .collect::<Vec<(Particle, Transform)>>();
+    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::new();
+    for (p, t) in query.iter() {
+        let x = (t.translation.x / layer.d3) as i32;
+        let y = (t.translation.y / layer.d3) as i32;
+        if let None = chunk.get(&(x, y)) {
+            chunk.insert((x, y), Vec::default());
+        }
+        if let Some(inner) = chunk.get_mut(&(x, y)) {
+            inner.push((p.to_owned(), t.to_owned()));
+        }
+    }
 
     for (mut particle, mut transform) in query {
         let my_type = particle.particle_type.clone();
 
-        let acceleration = components_copy
-            .iter()
-            .filter(|(p, _)| p.id != particle.id)
-            .fold(Vec3::default(), |acc, (p, t)| {
+        let chunk_x = (transform.translation.x / layer.d3) as i32;
+        let chunk_y = (transform.translation.y / layer.d3) as i32;
+
+        let iter_x = [chunk_x - 1, chunk_x, chunk_x + 1];
+        let iter_y = [chunk_y - 1, chunk_y, chunk_y + 1];
+
+        let mut components: Vec<(Particle, Transform)> = Vec::new();
+
+        for x in iter_x {
+            for y in iter_y {
+                if let Some(inner) = chunk.get(&(x, y)) {
+                    components.append(inner.to_owned().as_mut())
+                }
+            }
+        }
+
+        let acceleration = components.iter().filter(|(p, _)| p.id != particle.id).fold(
+            Vec3::default(),
+            |acc, (p, t)| {
                 let other_type = p.particle_type.clone();
                 let interaction =
                     interaction_table.get_interaction(my_type.clone(), other_type.clone());
@@ -182,28 +243,25 @@ fn update_particle(
 
                 let strength = interaction;
 
-                let d1 = 20.0;
-                let d2 = 50.0;
-                let d3 = 100.0;
-
-                let distance_factor = if distance >= d3 {
+                let distance_factor = if distance >= layer.d3 {
                     0.0
-                } else if distance >= d2 {
-                    (d3 - distance) / (d3 - d2)
-                } else if distance > d1 {
-                    (distance - d1) / d1
+                } else if distance >= layer.d2 {
+                    (layer.d3 - distance) / (layer.d3 - layer.d2)
+                } else if distance > layer.d1 {
+                    (distance - layer.d1) / layer.d1
                 } else {
                     0.0
                 };
 
-                let actual_acceleration = if distance > d1 {
+                let actual_acceleration = if distance > layer.d1 {
                     direction * strength * distance_factor
                 } else {
-                    direction * -0.5 * (d1 - distance)
+                    direction * -100.0 * (layer.d1 - distance)
                 };
 
                 acc + actual_acceleration
-            });
+            },
+        );
 
         particle.velocity += acceleration * time.delta_secs();
         particle.velocity *= 0.995;
@@ -212,8 +270,54 @@ fn update_particle(
     }
 }
 
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut material: ResMut<Assets<ColorMaterial>>,
+    mut interaction_table: ResMut<ParticleInteractionTable>,
+    config: Res<ParticleSetupConfig>,
+) {
+    let csv_path = "particle_interactions.csv";
+    if let Ok(loaded_table) = ParticleInteractionTable::from_csv_file(csv_path) {
+        *interaction_table = loaded_table;
+        println!(
+            "Successfully loaded particle interactions from {}",
+            csv_path
+        );
+    } else {
+        println!("Could not load {}, using default interactions", csv_path);
+    }
+
+    // 随机生成粒子
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    let particle_types = [ParticleType::Red, ParticleType::Blue];
+
+    for i in 0..config.num_particles {
+        // 随机位置
+        let x = rng.gen_range(-config.map_width / 2.0..config.map_width / 2.0);
+        let y = rng.gen_range(-config.map_height / 2.0..config.map_height / 2.0);
+
+        // 随机粒子类型
+        let particle_type = particle_types[rng.gen_range(0..particle_types.len())].clone();
+
+        Particle::spawn(
+            &mut commands,
+            &mut meshes,
+            &mut material,
+            Transform::from_xyz(x, y, 0.0),
+            particle_type,
+            i,
+        );
+    }
+}
+
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(self.setup_config.to_owned());
+        app.insert_resource(self.interaction_distance_layer.to_owned());
+        app.add_systems(Startup, setup);
         app.add_systems(
             Update,
             update_particle.run_if(input_toggle_active(true, KeyCode::KeyT)),
