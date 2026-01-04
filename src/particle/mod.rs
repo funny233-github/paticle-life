@@ -1,6 +1,5 @@
 use bevy::{input::common_conditions::input_toggle_active, prelude::*};
-use serde::Deserialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -9,13 +8,31 @@ use std::str::FromStr;
 const RED: Color = Color::hsl(360. * 0.0, 0.95, 0.7);
 const BLUE: Color = Color::hsl(360. * 0.66, 0.95, 0.7);
 const GREEN: Color = Color::hsl(360. * 0.33, 0.95, 0.7);
+const DT: f32 = 0.001;
 
-#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[repr(usize)]
 pub enum ParticleType {
     #[default]
-    Red,
-    Blue,
-    Green,
+    Red = 0,
+    Blue = 1,
+    Green = 2,
+}
+
+impl ParticleType {
+    pub const COUNT: usize = 3;
+
+    pub fn all_types() -> [ParticleType; Self::COUNT] {
+        [ParticleType::Red, ParticleType::Blue, ParticleType::Green]
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParticleType::Red => "Red",
+            ParticleType::Blue => "Blue",
+            ParticleType::Green => "Green",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -78,34 +95,20 @@ impl Particle {
     }
 }
 
-#[derive(Debug, Resource, Clone)]
+#[derive(Debug, Resource, Clone, Default)]
 pub struct ParticleInteractionTable {
-    interactions: BTreeMap<ParticleType, BTreeMap<ParticleType, f32>>,
+    interactions: [[f32; ParticleType::COUNT]; ParticleType::COUNT],
 }
 
 impl ParticleInteractionTable {
     pub fn new() -> Self {
-        let mut interactions: BTreeMap<ParticleType, BTreeMap<ParticleType, f32>> = BTreeMap::new();
-
-        let particle_types = vec![ParticleType::Red, ParticleType::Blue, ParticleType::Green];
-
-        for target in &particle_types {
-            let mut inner_map: BTreeMap<ParticleType, f32> = BTreeMap::new();
-            for source in &particle_types {
-                inner_map.insert(source.clone(), 0.0);
-            }
-            interactions.insert(target.clone(), inner_map);
+        Self {
+            interactions: [[0.0; ParticleType::COUNT]; ParticleType::COUNT],
         }
-
-        ParticleInteractionTable { interactions }
     }
 
     pub fn get_interaction(&self, target: ParticleType, source: ParticleType) -> f32 {
-        self.interactions
-            .get(&target)
-            .and_then(|inner| inner.get(&source))
-            .copied()
-            .unwrap_or(0.0)
+        self.interactions[target as usize][source as usize]
     }
 
     pub fn set_interaction(
@@ -114,43 +117,135 @@ impl ParticleInteractionTable {
         source: ParticleType,
         acceleration: f32,
     ) {
-        if let Some(inner) = self.interactions.get_mut(&target) {
-            inner.insert(source, acceleration);
-        }
+        self.interactions[target as usize][source as usize] = acceleration;
     }
 
     pub fn from_csv_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut table = ParticleInteractionTable::new();
+        let mut table = Self::new();
 
         let file = std::fs::File::open(path)?;
-        let mut rdr = csv::Reader::from_reader(file);
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(file);
 
-        #[derive(Deserialize)]
-        struct InteractionRecord {
-            target: String,
-            source: String,
-            strength: f32,
+        let mut headers: Vec<String> = Vec::new();
+        let mut row_idx = 0;
+
+        for result in rdr.records() {
+            let record = result?;
+
+            if headers.is_empty() {
+                // First row: header row (,target,Red,Blue,Green)
+                headers = record.iter().map(|s| s.to_string()).collect();
+                println!("CSV Headers: {:?}", headers);
+                println!("Header length: {}", headers.len());
+                continue;
+            }
+
+            // Parse subsequent rows
+            // Format: source,target_val0,target_val1,target_val2
+            println!(
+                "Row {}: {} columns, expected {}",
+                row_idx,
+                record.len(),
+                headers.len()
+            );
+
+            if record.len() < headers.len() {
+                eprintln!("Warning: Row {} has fewer columns than expected", row_idx);
+                row_idx += 1;
+                continue;
+            }
+
+            // First column is the source particle type
+            let source_str = record.get(0).ok_or("Missing source column")?;
+            let source_type = ParticleType::from_str(source_str)?;
+
+            // Remaining columns are the target values
+            for (col_idx, target_str) in headers.iter().skip(1).enumerate() {
+                if col_idx >= ParticleType::COUNT {
+                    break;
+                }
+
+                let value_str = record.get(col_idx + 1).ok_or("Missing value")?;
+                let value: f32 = value_str.parse()?;
+
+                let target_type = ParticleType::from_str(target_str)?;
+
+                let target_idx = target_type as usize;
+                let source_idx = source_type as usize;
+
+                table.interactions[target_idx][source_idx] = value;
+
+                println!(
+                    "Loaded: {}[{}] <- {}[{}] = {:.1}",
+                    target_str, target_idx, source_str, source_idx, value
+                );
+            }
+
+            row_idx += 1;
         }
 
-        for result in rdr.deserialize() {
-            let record: InteractionRecord = result?;
-
-            let target_type = ParticleType::from_str(&record.target)?;
-
-            let source_type = ParticleType::from_str(&record.source)?;
-
-            let acceleration = record.strength;
-
-            table.set_interaction(target_type, source_type, acceleration);
-        }
+        println!("\nLoaded interaction table from {}:", path);
+        table.print_table();
 
         Ok(table)
     }
-}
 
-impl Default for ParticleInteractionTable {
-    fn default() -> Self {
-        Self::new()
+    pub fn to_csv_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut wtr = csv::Writer::from_path(path)?;
+
+        // Write header row: ,target,Red,Blue,Green
+        let mut header: Vec<String> = vec![String::new(), String::from("target")];
+        for particle_type in ParticleType::all_types() {
+            header.push(particle_type.as_str().to_string());
+        }
+        wtr.write_record(&header)?;
+
+        // Write data rows: source,value0,value1,value2
+        for source in ParticleType::all_types() {
+            let mut row: Vec<String> = vec![source.as_str().to_string()];
+            for target in ParticleType::all_types() {
+                let value = self.get_interaction(target, source);
+                row.push(value.to_string());
+            }
+            wtr.write_record(&row)?;
+        }
+
+        wtr.flush()?;
+        println!("Saved interaction table to {}", path);
+        Ok(())
+    }
+
+    pub fn print_table(&self) {
+        println!(
+            "       {:>8} {:>8} {:>8}",
+            ParticleType::Red.as_str(),
+            ParticleType::Blue.as_str(),
+            ParticleType::Green.as_str()
+        );
+        println!(
+            "       {:>8} {:>8} {:>8}",
+            "--------", "--------", "--------"
+        );
+
+        for target in ParticleType::all_types() {
+            print!("{:<6} |", target.as_str());
+            for source in ParticleType::all_types() {
+                let value = self.get_interaction(target, source);
+                print!(" {:>8.1}", value);
+            }
+            println!();
+        }
+        println!();
+    }
+
+    pub fn as_matrix(&self) -> &[[f32; ParticleType::COUNT]; ParticleType::COUNT] {
+        &self.interactions
+    }
+
+    pub fn as_matrix_mut(&mut self) -> &mut [[f32; ParticleType::COUNT]; ParticleType::COUNT] {
+        &mut self.interactions
     }
 }
 
@@ -198,75 +293,62 @@ fn update_particle(
     query: Query<(&mut Particle, &mut Transform), With<Mesh2d>>,
     interaction_table: Res<ParticleInteractionTable>,
     layer: Res<ParticleInteractionDistanceLayer>,
-    time: Res<Time>,
 ) {
-    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::new();
+    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::with_capacity(10);
     for (p, t) in query.iter() {
         let x = (t.translation.x / layer.d3) as i32;
         let y = (t.translation.y / layer.d3) as i32;
-        if let None = chunk.get(&(x, y)) {
-            chunk.insert((x, y), Vec::default());
-        }
-        if let Some(inner) = chunk.get_mut(&(x, y)) {
-            inner.push((p.to_owned(), t.to_owned()));
-        }
+        chunk
+            .entry((x, y))
+            .and_modify(|inner| inner.push((p.to_owned(), t.to_owned())))
+            .or_insert([(p.to_owned(), t.to_owned())].into());
     }
 
     for (mut particle, mut transform) in query {
-        let my_type = particle.particle_type.clone();
+        let my_type = particle.particle_type;
 
         let chunk_x = (transform.translation.x / layer.d3) as i32;
         let chunk_y = (transform.translation.y / layer.d3) as i32;
 
-        let iter_x = [chunk_x - 1, chunk_x, chunk_x + 1];
-        let iter_y = [chunk_y - 1, chunk_y, chunk_y + 1];
-
         let mut components: Vec<(Particle, Transform)> = Vec::new();
-
-        for x in iter_x {
-            for y in iter_y {
-                if let Some(inner) = chunk.get(&(x, y)) {
-                    components.append(inner.to_owned().as_mut())
-                }
+        for x in chunk_x - 1..=chunk_x + 1 {
+            for y in chunk_y - 1..=chunk_y + 1 {
+                chunk
+                    .entry((x, y))
+                    .and_modify(|inner| components.append(inner.to_owned().as_mut()));
             }
         }
 
         let acceleration = components.iter().filter(|(p, _)| p.id != particle.id).fold(
             Vec3::default(),
             |acc, (p, t)| {
-                let other_type = p.particle_type.clone();
-                let interaction =
-                    interaction_table.get_interaction(my_type.clone(), other_type.clone());
-
                 let distance = transform.translation.distance(t.translation);
                 let direction = (t.translation - transform.translation) / distance;
 
-                let strength = interaction;
+                if distance < layer.d1 {
+                    let actual_acceleration = direction * -100.0 * (layer.d1 - distance);
+                    return acc + actual_acceleration;
+                } else if distance >= layer.d3 {
+                    return acc;
+                }
 
-                let distance_factor = if distance >= layer.d3 {
-                    0.0
-                } else if distance >= layer.d2 {
+                let distance_factor = if distance >= layer.d2 {
                     (layer.d3 - distance) / (layer.d3 - layer.d2)
-                } else if distance > layer.d1 {
-                    (distance - layer.d1) / layer.d1
                 } else {
-                    0.0
+                    (distance - layer.d1) / layer.d1
                 };
 
-                let actual_acceleration = if distance > layer.d1 {
-                    direction * strength * distance_factor
-                } else {
-                    direction * -100.0 * (layer.d1 - distance)
-                };
+                let other_type = p.particle_type;
+                let strength = interaction_table.get_interaction(my_type, other_type);
+                let actual_acceleration = direction * strength * distance_factor;
 
                 acc + actual_acceleration
             },
         );
 
-        particle.velocity += acceleration * time.delta_secs();
-        particle.velocity *= 0.995;
-
-        transform.translation += particle.velocity * time.delta_secs();
+        particle.velocity += acceleration * DT;
+        particle.velocity *= 0.1_f32.powf(DT);
+        transform.translation += particle.velocity * DT;
     }
 }
 
@@ -278,21 +360,25 @@ fn setup(
     config: Res<ParticleSetupConfig>,
 ) {
     let csv_path = "particle_interactions.csv";
-    if let Ok(loaded_table) = ParticleInteractionTable::from_csv_file(csv_path) {
-        *interaction_table = loaded_table;
-        println!(
-            "Successfully loaded particle interactions from {}",
-            csv_path
-        );
-    } else {
-        println!("Could not load {}, using default interactions", csv_path);
+    match ParticleInteractionTable::from_csv_file(csv_path) {
+        Ok(loaded_table) => {
+            *interaction_table = loaded_table;
+            println!(
+                "Successfully loaded particle interactions from {}",
+                csv_path
+            );
+        }
+        Err(e) => {
+            println!("Could not load {}, using default interactions", csv_path);
+            println!("Error: {}", e);
+        }
     }
 
     // 随机生成粒子
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
-    let particle_types = [ParticleType::Red, ParticleType::Blue];
+    let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
 
     for i in 0..config.num_particles {
         // 随机位置
