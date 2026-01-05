@@ -1,4 +1,4 @@
-use crate::particle::ParticleConfig;
+use crate::particle::*;
 use bevy::prelude::*;
 use bevy_console::*;
 use clap::Parser;
@@ -164,6 +164,39 @@ fn print_config(mut log: ConsoleCommand<PrintConfig>, config: Res<ParticleConfig
     }
 }
 
+#[derive(Parser, ConsoleCommand)]
+#[command(name = "respawn_particle")]
+struct RespawnParticle;
+
+fn respawn_particle(
+    mut log: ConsoleCommand<RespawnParticle>,
+    mut commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    material: ResMut<Assets<ColorMaterial>>,
+    query: Query<Entity, With<Particle>>,
+    config: Res<ParticleConfig>,
+) {
+    if let Some(Ok(RespawnParticle)) = log.take() {
+        clean_particle(commands.reborrow(), query);
+        spawn_particle(commands, meshes, material, config);
+        reply!(log, "Respawned all particles");
+    }
+}
+
+#[derive(Parser, ConsoleCommand)]
+#[command(name = "set_init_particle_num")]
+struct SetInitParticleNum {
+    /// Set the initial number of particles to spawn
+    value: usize,
+}
+
+fn set_init_particle_num(mut log: ConsoleCommand<SetInitParticleNum>, mut config: ResMut<ParticleConfig>) {
+    if let Some(Ok(SetInitParticleNum { value })) = log.take() {
+        config.init_particle_num = value;
+        reply!(log, "set init_particle_num to {} successfully", value);
+    }
+}
+
 pub struct CommandPlugin;
 
 impl Plugin for CommandPlugin {
@@ -183,5 +216,7 @@ impl Plugin for CommandPlugin {
         app.add_console_command::<PrintFriction, _>(print_friction);
 
         app.add_console_command::<PrintConfig, _>(print_config);
+        app.add_console_command::<RespawnParticle, _>(respawn_particle);
+        app.add_console_command::<SetInitParticleNum, _>(set_init_particle_num);
     }
 }

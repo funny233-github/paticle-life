@@ -393,29 +393,12 @@ fn update_particle(
     }
 }
 
-fn setup(
+pub fn spawn_particle(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut material: ResMut<Assets<ColorMaterial>>,
-    mut interaction_table: ResMut<ParticleInteractionTable>,
     config: Res<ParticleConfig>,
 ) {
-    let csv_path = "particle_interactions.csv";
-    match ParticleInteractionTable::from_csv_file(csv_path) {
-        Ok(loaded_table) => {
-            *interaction_table = loaded_table;
-            println!(
-                "Successfully loaded particle interactions from {}",
-                csv_path
-            );
-        }
-        Err(e) => {
-            println!("Could not load {}, using default interactions", csv_path);
-            println!("Error: {}", e);
-        }
-    }
-
-    // 随机生成粒子
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
@@ -438,6 +421,38 @@ fn setup(
             i,
         );
     }
+}
+
+pub fn clean_particle(mut commands: Commands, query: Query<Entity, With<Particle>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+    bevy::log::info!("Cleaned all particles");
+}
+
+fn setup(
+    commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    material: ResMut<Assets<ColorMaterial>>,
+    mut interaction_table: ResMut<ParticleInteractionTable>,
+    config: Res<ParticleConfig>,
+) {
+    let csv_path = "particle_interactions.csv";
+    match ParticleInteractionTable::from_csv_file(csv_path) {
+        Ok(loaded_table) => {
+            *interaction_table = loaded_table;
+            println!(
+                "Successfully loaded particle interactions from {}",
+                csv_path
+            );
+        }
+        Err(e) => {
+            println!("Could not load {}, using default interactions", csv_path);
+            println!("Error: {}", e);
+        }
+    }
+
+    spawn_particle(commands, meshes, material, config)
 }
 
 impl Plugin for ParticlePlugin {
