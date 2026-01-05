@@ -17,6 +17,8 @@ enum SetSubcommand {
     RepelForce { value: f32 },
     /// Set temperature coefficient for velocity damping
     Temperature { value: f32 },
+    /// Set the time step for particle updates
+    Dt { value: f32 },
     /// Set the initial number of particles to spawn
     InitParticleNum { value: usize },
 }
@@ -56,6 +58,10 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
                 config.temperature = value;
                 reply!(log, "set temperature to {:.3} successfully", value);
             }
+            SetSubcommand::Dt { value } => {
+                config.dt = value;
+                reply!(log, "set dt to {:.3} successfully", value);
+            }
             SetSubcommand::InitParticleNum { value } => {
                 config.init_particle_num = value;
                 reply!(log, "set init_particle_num to {} successfully", value);
@@ -70,6 +76,7 @@ enum PrintTarget {
     D,
     RepelForce,
     Temperature,
+    Dt,
     Config,
 }
 
@@ -82,9 +89,10 @@ impl std::str::FromStr for PrintTarget {
             "d" => Ok(PrintTarget::D),
             "repel_force" => Ok(PrintTarget::RepelForce),
             "temperature" => Ok(PrintTarget::Temperature),
+            "dt" => Ok(PrintTarget::Dt),
             "config" => Ok(PrintTarget::Config),
             _ => Err(format!(
-                "Invalid print target. Valid options: boundary, d, repel_force, temperature, config"
+                "Invalid print target. Valid options: boundary, d, repel_force, temperature, dt, config"
             )),
         }
     }
@@ -93,7 +101,7 @@ impl std::str::FromStr for PrintTarget {
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "print")]
 struct PrintCommand {
-    /// What to print: boundary, d, repel_force, temperature, or config
+    /// What to print: boundary, d, repel_force, temperature, dt, or config
     target: PrintTarget,
 }
 
@@ -112,6 +120,9 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
             PrintTarget::Temperature => {
                 reply!(log, "temperature: {:.3}", config.temperature);
             }
+            PrintTarget::Dt => {
+                reply!(log, "dt: {:.3}", config.dt);
+            }
             PrintTarget::Config => {
                 reply!(
                     log,
@@ -123,7 +134,8 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                      - d2 (transition): {:.2}\n\
                      - d3 (max_distance): {:.2}\n\
                      - repel_force: {:.2}\n\
-                     - temperature: {:.3}",
+                     - temperature: {:.3}\n\
+                     - dt: {:.3}",
                     config.init_particle_num,
                     config.map_width,
                     config.map_height,
@@ -131,7 +143,8 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                     config.d2,
                     config.d3,
                     config.repel_force,
-                    config.temperature
+                    config.temperature,
+                    config.dt
                 );
             }
         }
