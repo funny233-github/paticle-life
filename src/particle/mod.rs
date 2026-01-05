@@ -287,7 +287,7 @@ pub struct ParticleConfig {
     pub d3: f32,
 
     pub repel_force: f32,
-    pub friction: f32,
+    pub temperature: f32,
 }
 
 impl Default for ParticleConfig {
@@ -302,7 +302,7 @@ impl Default for ParticleConfig {
             d3: 100.0,
 
             repel_force: -100.0,
-            friction: 0.1,
+            temperature: 0.1,
         }
     }
 }
@@ -370,7 +370,7 @@ fn update_particle(
         );
 
         particle.velocity += acceleration * DT;
-        particle.velocity *= config.friction.powf(DT);
+        particle.velocity *= config.temperature.powf(DT);
 
         transform.translation += particle.velocity * DT;
 

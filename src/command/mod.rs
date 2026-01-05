@@ -15,8 +15,8 @@ enum SetSubcommand {
     D3 { value: f32 },
     /// Set the repel force magnitude for collision
     RepelForce { value: f32 },
-    /// Set the friction coefficient for velocity damping
-    Friction { value: f32 },
+    /// Set temperature coefficient for velocity damping
+    Temperature { value: f32 },
     /// Set the initial number of particles to spawn
     InitParticleNum { value: usize },
 }
@@ -52,9 +52,9 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
                 config.repel_force = value;
                 reply!(log, "set repel_force to {:.2} successfully", value);
             }
-            SetSubcommand::Friction { value } => {
-                config.friction = value;
-                reply!(log, "set friction to {:.3} successfully", value);
+            SetSubcommand::Temperature { value } => {
+                config.temperature = value;
+                reply!(log, "set temperature to {:.3} successfully", value);
             }
             SetSubcommand::InitParticleNum { value } => {
                 config.init_particle_num = value;
@@ -69,7 +69,7 @@ enum PrintTarget {
     Boundary,
     D,
     RepelForce,
-    Friction,
+    Temperature,
     Config,
 }
 
@@ -81,10 +81,10 @@ impl std::str::FromStr for PrintTarget {
             "boundary" => Ok(PrintTarget::Boundary),
             "d" => Ok(PrintTarget::D),
             "repel_force" => Ok(PrintTarget::RepelForce),
-            "friction" => Ok(PrintTarget::Friction),
+            "temperature" => Ok(PrintTarget::Temperature),
             "config" => Ok(PrintTarget::Config),
             _ => Err(format!(
-                "Invalid print target. Valid options: boundary, d, repel_force, friction, config"
+                "Invalid print target. Valid options: boundary, d, repel_force, temperature, config"
             )),
         }
     }
@@ -93,7 +93,7 @@ impl std::str::FromStr for PrintTarget {
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "print")]
 struct PrintCommand {
-    /// What to print: boundary, d, repel_force, friction, or config
+    /// What to print: boundary, d, repel_force, temperature, or config
     target: PrintTarget,
 }
 
@@ -109,8 +109,8 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
             PrintTarget::RepelForce => {
                 reply!(log, "repel_force: {:.2}", config.repel_force);
             }
-            PrintTarget::Friction => {
-                reply!(log, "friction: {:.3}", config.friction);
+            PrintTarget::Temperature => {
+                reply!(log, "temperature: {:.3}", config.temperature);
             }
             PrintTarget::Config => {
                 reply!(
@@ -123,7 +123,7 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                      - d2 (transition): {:.2}\n\
                      - d3 (max_distance): {:.2}\n\
                      - repel_force: {:.2}\n\
-                     - friction: {:.3}",
+                     - temperature: {:.3}",
                     config.init_particle_num,
                     config.map_width,
                     config.map_height,
@@ -131,7 +131,7 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                     config.d2,
                     config.d3,
                     config.repel_force,
-                    config.friction
+                    config.temperature
                 );
             }
         }
