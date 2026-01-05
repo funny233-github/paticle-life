@@ -1,92 +1,66 @@
 use crate::particle::*;
 use bevy::prelude::*;
 use bevy_console::*;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_boundary")]
-struct SetBoundary {
-    /// Some message
-    width: f32,
-    height: f32,
-}
-
-fn set_boundary(mut log: ConsoleCommand<SetBoundary>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetBoundary { width, height })) = log.take() {
-        // handle command
-        config.map_width = width;
-        config.map_height = height;
-        reply!(log, "set map width: {width}, height: {height} successfully");
-    }
-}
-
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_d1")]
-struct SetD1 {
-    /// Set the d1 distance value (collision distance)
-    value: f32,
-}
-
-fn set_d1(mut log: ConsoleCommand<SetD1>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetD1 { value })) = log.take() {
-        config.d1 = value;
-        reply!(log, "set d1 to {value:.2} successfully");
-    }
-}
-
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_d2")]
-struct SetD2 {
-    /// Set the d2 distance value (interaction transition start)
-    value: f32,
-}
-
-fn set_d2(mut log: ConsoleCommand<SetD2>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetD2 { value })) = log.take() {
-        config.d2 = value;
-        reply!(log, "set d2 to {value:.2} successfully");
-    }
-}
-
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_d3")]
-struct SetD3 {
-    /// Set the d3 distance value (interaction max distance and chunk size)
-    value: f32,
-}
-
-fn set_d3(mut log: ConsoleCommand<SetD3>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetD3 { value })) = log.take() {
-        config.d3 = value;
-        reply!(log, "set d3 to {value:.2} successfully");
-    }
-}
-
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_repel_force")]
-struct SetRepelForce {
+#[derive(Subcommand, Clone, PartialEq)]
+enum SetSubcommand {
+    /// Set map boundary dimensions
+    Boundary { width: f32, height: f32 },
+    /// Set d1 distance value (collision distance)
+    D1 { value: f32 },
+    /// Set d2 distance value (interaction transition start)
+    D2 { value: f32 },
+    /// Set d3 distance value (interaction max distance and chunk size)
+    D3 { value: f32 },
     /// Set the repel force magnitude for collision
-    value: f32,
-}
-
-fn set_repel_force(mut log: ConsoleCommand<SetRepelForce>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetRepelForce { value })) = log.take() {
-        config.repel_force = value;
-        reply!(log, "set repel_force to {value:.2} successfully");
-    }
+    RepelForce { value: f32 },
+    /// Set the friction coefficient for velocity damping
+    Friction { value: f32 },
+    /// Set the initial number of particles to spawn
+    InitParticleNum { value: usize },
 }
 
 #[derive(Parser, ConsoleCommand)]
-#[command(name = "set_friction")]
-struct SetFriction {
-    /// Set the friction coefficient for velocity damping
-    value: f32,
+#[command(name = "set")]
+struct SetCommand {
+    #[command(subcommand)]
+    subcommand: SetSubcommand,
 }
 
-fn set_friction(mut log: ConsoleCommand<SetFriction>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetFriction { value })) = log.take() {
-        config.friction = value;
-        reply!(log, "set friction to {value:.3} successfully");
+fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) {
+    if let Some(Ok(SetCommand { subcommand })) = log.take() {
+        match subcommand {
+            SetSubcommand::Boundary { width, height } => {
+                config.map_width = width;
+                config.map_height = height;
+                reply!(log, "set map width: {:.2}, height: {:.2} successfully", width, height);
+            }
+            SetSubcommand::D1 { value } => {
+                config.d1 = value;
+                reply!(log, "set d1 to {:.2} successfully", value);
+            }
+            SetSubcommand::D2 { value } => {
+                config.d2 = value;
+                reply!(log, "set d2 to {:.2} successfully", value);
+            }
+            SetSubcommand::D3 { value } => {
+                config.d3 = value;
+                reply!(log, "set d3 to {:.2} successfully", value);
+            }
+            SetSubcommand::RepelForce { value } => {
+                config.repel_force = value;
+                reply!(log, "set repel_force to {:.2} successfully", value);
+            }
+            SetSubcommand::Friction { value } => {
+                config.friction = value;
+                reply!(log, "set friction to {:.3} successfully", value);
+            }
+            SetSubcommand::InitParticleNum { value } => {
+                config.init_particle_num = value;
+                reply!(log, "set init_particle_num to {} successfully", value);
+            }
+        }
     }
 }
 
@@ -183,35 +157,12 @@ fn respawn_particle(
     }
 }
 
-#[derive(Parser, ConsoleCommand)]
-#[command(name = "set_init_particle_num")]
-struct SetInitParticleNum {
-    /// Set the initial number of particles to spawn
-    value: usize,
-}
-
-fn set_init_particle_num(mut log: ConsoleCommand<SetInitParticleNum>, mut config: ResMut<ParticleConfig>) {
-    if let Some(Ok(SetInitParticleNum { value })) = log.take() {
-        config.init_particle_num = value;
-        reply!(log, "set init_particle_num to {} successfully", value);
-    }
-}
-
 pub struct CommandPlugin;
 
 impl Plugin for CommandPlugin {
     fn build(&self, app: &mut App) {
-        app.add_console_command::<SetBoundary, _>(set_boundary);
-
-        app.add_console_command::<SetD1, _>(set_d1);
-        app.add_console_command::<SetD2, _>(set_d2);
-        app.add_console_command::<SetD3, _>(set_d3);
-
-        app.add_console_command::<SetRepelForce, _>(set_repel_force);
-        app.add_console_command::<SetFriction, _>(set_friction);
-
+        app.add_console_command::<SetCommand, _>(set);
         app.add_console_command::<PrintCommand, _>(print);
         app.add_console_command::<RespawnParticle, _>(respawn_particle);
-        app.add_console_command::<SetInitParticleNum, _>(set_init_particle_num);
     }
 }
