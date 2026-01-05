@@ -1,4 +1,5 @@
-use bevy::{input::common_conditions::input_toggle_active, prelude::*};
+use crate::input_focus::*;
+use bevy::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -8,7 +9,32 @@ use std::str::FromStr;
 const RED: Color = Color::hsl(360. * 0.0, 0.95, 0.7);
 const BLUE: Color = Color::hsl(360. * 0.66, 0.95, 0.7);
 const GREEN: Color = Color::hsl(360. * 0.33, 0.95, 0.7);
-const DT: f32 = 0.001;
+const DT: f32 = 0.01;
+
+/// 粒子更新切换状态资源
+#[derive(Resource, Default)]
+struct ParticleUpdateToggle {
+    enabled: bool,
+}
+
+/// 切换粒子更新状态（只在游戏焦点时响应）
+fn toggle_particle_update(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut toggle: ResMut<ParticleUpdateToggle>,
+    input_focus: Res<InputFocus>,
+) {
+    if input_focus.is_game() && keys.just_pressed(KeyCode::KeyT) {
+        toggle.enabled = !toggle.enabled;
+        bevy::log::info!(
+            "Particle update: {}",
+            if toggle.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+}
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(usize)]
@@ -254,6 +280,14 @@ pub struct ParticleConfig {
     pub init_particle_num: usize,
     pub map_width: f32,
     pub map_height: f32,
+
+    // ParticleInteractionDistanceLayer
+    pub d1: f32,
+    pub d2: f32,
+    pub d3: f32,
+
+    pub repel_force: f32,
+    pub friction: f32,
 }
 
 impl Default for ParticleConfig {
@@ -262,23 +296,13 @@ impl Default for ParticleConfig {
             init_particle_num: 1000,
             map_width: 1000.0,
             map_height: 1000.0,
-        }
-    }
-}
 
-#[derive(Debug, Resource, Clone)]
-pub struct ParticleInteractionDistanceLayer {
-    pub d1: f32,
-    pub d2: f32,
-    pub d3: f32,
-}
-
-impl Default for ParticleInteractionDistanceLayer {
-    fn default() -> Self {
-        Self {
             d1: 30.0,
             d2: 65.0,
             d3: 100.0,
+
+            repel_force: -100.0,
+            friction: 0.1,
         }
     }
 }
@@ -286,19 +310,17 @@ impl Default for ParticleInteractionDistanceLayer {
 #[derive(Debug, Default)]
 pub struct ParticlePlugin {
     pub config: ParticleConfig,
-    pub interaction_distance_layer: ParticleInteractionDistanceLayer,
 }
 
 fn update_particle(
     query: Query<(&mut Particle, &mut Transform), With<Mesh2d>>,
     interaction_table: Res<ParticleInteractionTable>,
-    layer: Res<ParticleInteractionDistanceLayer>,
     config: Res<ParticleConfig>,
 ) {
     let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::with_capacity(1000);
     for (p, t) in query.iter() {
-        let x = (t.translation.x / layer.d3) as i32;
-        let y = (t.translation.y / layer.d3) as i32;
+        let x = (t.translation.x / config.d3) as i32;
+        let y = (t.translation.y / config.d3) as i32;
         chunk
             .entry((x, y))
             .and_modify(|inner| inner.push((p.to_owned(), t.to_owned())))
@@ -308,8 +330,8 @@ fn update_particle(
     for (mut particle, mut transform) in query {
         let my_type = particle.particle_type;
 
-        let chunk_x = (transform.translation.x / layer.d3) as i32;
-        let chunk_y = (transform.translation.y / layer.d3) as i32;
+        let chunk_x = (transform.translation.x / config.d3) as i32;
+        let chunk_y = (transform.translation.y / config.d3) as i32;
 
         let mut components: Vec<(Particle, Transform)> = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
@@ -326,17 +348,17 @@ fn update_particle(
                 let distance = transform.translation.distance(t.translation);
                 let direction = (t.translation - transform.translation) / distance;
 
-                if distance < layer.d1 {
-                    let actual_acceleration = direction * -100.0 * (layer.d1 - distance);
+                if distance < config.d1 {
+                    let actual_acceleration =
+                        direction * config.repel_force * (config.d1 - distance);
                     return acc + actual_acceleration;
-                } else if distance >= layer.d3 {
+                } else if distance >= config.d3 {
                     return acc;
                 }
-
-                let distance_factor = if distance >= layer.d2 {
-                    (layer.d3 - distance) / (layer.d3 - layer.d2)
+                let distance_factor = if distance >= config.d2 {
+                    (config.d3 - distance) / (config.d3 - config.d2)
                 } else {
-                    (distance - layer.d1) / layer.d1
+                    (distance - config.d1) / config.d1
                 };
 
                 let other_type = p.particle_type;
@@ -348,7 +370,7 @@ fn update_particle(
         );
 
         particle.velocity += acceleration * DT;
-        particle.velocity *= 0.1_f32.powf(DT);
+        particle.velocity *= config.friction.powf(DT);
 
         transform.translation += particle.velocity * DT;
 
@@ -421,11 +443,12 @@ fn setup(
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config.to_owned());
-        app.insert_resource(self.interaction_distance_layer.to_owned());
+        app.insert_resource(ParticleUpdateToggle::default());
         app.add_systems(Startup, setup);
+        app.add_systems(Update, toggle_particle_update);
         app.add_systems(
             Update,
-            update_particle.run_if(input_toggle_active(true, KeyCode::KeyT)),
+            update_particle.run_if(|toggle: Res<ParticleUpdateToggle>| toggle.enabled),
         );
     }
 }
