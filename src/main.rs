@@ -82,10 +82,10 @@ fn main() {
             Wireframe2dPlugin::default(),
             FrameTimeDiagnosticsPlugin::default(),
             ParticlePlugin {
-                setup_config: ParticleSetupConfig {
-                    num_particles: 5000,
-                    map_width: 1000.0,
-                    map_height: 1000.0,
+                config: ParticleConfig {
+                    init_particle_num: 6000,
+                    map_width: 7608.0,
+                    map_height: 3909.0,
                 },
                 ..Default::default()
             },

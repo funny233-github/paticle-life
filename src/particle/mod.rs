@@ -250,16 +250,16 @@ impl ParticleInteractionTable {
 }
 
 #[derive(Debug, Resource, Clone)]
-pub struct ParticleSetupConfig {
-    pub num_particles: usize,
+pub struct ParticleConfig {
+    pub init_particle_num: usize,
     pub map_width: f32,
     pub map_height: f32,
 }
 
-impl Default for ParticleSetupConfig {
+impl Default for ParticleConfig {
     fn default() -> Self {
         Self {
-            num_particles: 1000,
+            init_particle_num: 1000,
             map_width: 1000.0,
             map_height: 1000.0,
         }
@@ -285,7 +285,8 @@ impl Default for ParticleInteractionDistanceLayer {
 
 #[derive(Debug, Default)]
 pub struct ParticlePlugin {
-    pub setup_config: ParticleSetupConfig,
+    pub num_particles: usize,
+    pub config: ParticleConfig,
     pub interaction_distance_layer: ParticleInteractionDistanceLayer,
 }
 
@@ -293,8 +294,9 @@ fn update_particle(
     query: Query<(&mut Particle, &mut Transform), With<Mesh2d>>,
     interaction_table: Res<ParticleInteractionTable>,
     layer: Res<ParticleInteractionDistanceLayer>,
+    config: Res<ParticleConfig>,
 ) {
-    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::with_capacity(10);
+    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::with_capacity(1000);
     for (p, t) in query.iter() {
         let x = (t.translation.x / layer.d3) as i32;
         let y = (t.translation.y / layer.d3) as i32;
@@ -310,7 +312,7 @@ fn update_particle(
         let chunk_x = (transform.translation.x / layer.d3) as i32;
         let chunk_y = (transform.translation.y / layer.d3) as i32;
 
-        let mut components: Vec<(Particle, Transform)> = Vec::new();
+        let mut components: Vec<(Particle, Transform)> = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
             for y in chunk_y - 1..=chunk_y + 1 {
                 chunk
@@ -348,7 +350,25 @@ fn update_particle(
 
         particle.velocity += acceleration * DT;
         particle.velocity *= 0.1_f32.powf(DT);
+
         transform.translation += particle.velocity * DT;
+
+        let half_width = config.map_width / 2.0;
+        let half_height = config.map_height / 2.0;
+
+        if transform.translation.x < -half_width {
+            transform.translation.x = -half_width;
+            particle.velocity.x *= -1.0;
+        } else if transform.translation.x > half_width {
+            transform.translation.x = half_width;
+            particle.velocity.x *= -1.0;
+        } else if transform.translation.y < -half_height {
+            transform.translation.y = -half_height;
+            particle.velocity.y *= -1.0;
+        } else if transform.translation.y > half_height {
+            transform.translation.y = half_height;
+            particle.velocity.y *= -1.0;
+        }
     }
 }
 
@@ -357,7 +377,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut material: ResMut<Assets<ColorMaterial>>,
     mut interaction_table: ResMut<ParticleInteractionTable>,
-    config: Res<ParticleSetupConfig>,
+    config: Res<ParticleConfig>,
 ) {
     let csv_path = "particle_interactions.csv";
     match ParticleInteractionTable::from_csv_file(csv_path) {
@@ -380,7 +400,7 @@ fn setup(
 
     let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
 
-    for i in 0..config.num_particles {
+    for i in 0..config.init_particle_num {
         // 随机位置
         let x = rng.gen_range(-config.map_width / 2.0..config.map_width / 2.0);
         let y = rng.gen_range(-config.map_height / 2.0..config.map_height / 2.0);
@@ -401,7 +421,7 @@ fn setup(
 
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(self.setup_config.to_owned());
+        app.insert_resource(self.config.to_owned());
         app.insert_resource(self.interaction_distance_layer.to_owned());
         app.add_systems(Startup, setup);
         app.add_systems(
