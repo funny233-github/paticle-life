@@ -82,7 +82,7 @@ impl Particle {
             Particle {
                 id,
                 velocity: Vec3::default(),
-                particle_type: particle_type.clone(),
+                particle_type,
             },
             Mesh2d(meshes.add(Circle::new(10.0))),
             match particle_type {
@@ -285,7 +285,6 @@ impl Default for ParticleInteractionDistanceLayer {
 
 #[derive(Debug, Default)]
 pub struct ParticlePlugin {
-    pub num_particles: usize,
     pub config: ParticleConfig,
     pub interaction_distance_layer: ParticleInteractionDistanceLayer,
 }
@@ -406,7 +405,7 @@ fn setup(
         let y = rng.gen_range(-config.map_height / 2.0..config.map_height / 2.0);
 
         // 随机粒子类型
-        let particle_type = particle_types[rng.gen_range(0..particle_types.len())].clone();
+        let particle_type = particle_types[rng.gen_range(0..particle_types.len())];
 
         Particle::spawn(
             &mut commands,

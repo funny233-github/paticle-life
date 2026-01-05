@@ -21,14 +21,13 @@ fn setup(mut commands: Commands) {
 
 fn update_fps(mut query: Query<&mut Text>, diagnostics: Res<DiagnosticsStore>) {
     for mut text in query.iter_mut() {
-        if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-            if let Some(value) = fps.smoothed() {
+        if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS)
+            && let Some(value) = fps.smoothed() {
                 text.0 = format!(
                     "FPS: {:.1}\nPress T to toggle update\nPress A/W/S/D to move camera\nPress -/+ to zoom camera",
                     value
                 );
             }
-        }
     }
 }
 
