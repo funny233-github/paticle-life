@@ -1,4 +1,5 @@
 use crate::input_focus::*;
+use bevy::color::palettes::tailwind::*;
 use bevy::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
@@ -6,17 +7,11 @@ use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 
-const RED: Color = Color::hsl(360. * 0.0, 0.95, 0.7);
-const BLUE: Color = Color::hsl(360. * 0.66, 0.95, 0.7);
-const GREEN: Color = Color::hsl(360. * 0.33, 0.95, 0.7);
-
-/// 粒子更新切换状态资源
 #[derive(Resource, Default)]
 struct ParticleUpdateToggle {
     enabled: bool,
 }
 
-/// 切换粒子更新状态（只在游戏焦点时响应）
 fn toggle_particle_update(
     keys: Res<ButtonInput<KeyCode>>,
     mut toggle: ResMut<ParticleUpdateToggle>,
@@ -35,7 +30,7 @@ fn toggle_particle_update(
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Component, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(usize)]
 pub enum ParticleType {
     #[default]
@@ -87,11 +82,34 @@ impl FromStr for ParticleType {
     }
 }
 
-#[derive(Component, Debug, Default, Clone)]
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Velocity {
+    pub value: Vec3,
+}
+
+impl Velocity {
+    pub fn new(value: Vec3) -> Self {
+        Self { value }
+    }
+
+    pub fn from_xyz(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            value: Vec3::new(x, y, z),
+        }
+    }
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ParticleMarker;
+
+#[derive(Bundle, Debug, Clone)]
 pub struct Particle {
-    pub id: usize,
-    pub velocity: Vec3,
+    pub marker: ParticleMarker,
     pub particle_type: ParticleType,
+    pub velocity: Velocity,
+    pub mesh: Mesh2d,
+    pub material: MeshMaterial2d<ColorMaterial>,
+    pub transform: Transform,
 }
 
 impl Particle {
@@ -101,22 +119,25 @@ impl Particle {
         material: &mut ResMut<Assets<ColorMaterial>>,
         transform: Transform,
         particle_type: ParticleType,
-        id: usize,
     ) {
-        commands.spawn((
-            Particle {
-                id,
-                velocity: Vec3::default(),
-                particle_type,
-            },
-            Mesh2d(meshes.add(Circle::new(10.0))),
-            match particle_type {
-                ParticleType::Red => MeshMaterial2d(material.add(RED)),
-                ParticleType::Blue => MeshMaterial2d(material.add(BLUE)),
-                ParticleType::Green => MeshMaterial2d(material.add(GREEN)),
+        commands.spawn(Particle {
+            marker: ParticleMarker,
+            particle_type,
+            velocity: Velocity::new(Vec3::default()),
+            mesh: Mesh2d(meshes.add(Circle::new(10.0))),
+            material: match particle_type {
+                ParticleType::Red => {
+                    MeshMaterial2d(material.add(ColorMaterial::from_color(RED_500)))
+                }
+                ParticleType::Blue => {
+                    MeshMaterial2d(material.add(ColorMaterial::from_color(BLUE_500)))
+                }
+                ParticleType::Green => {
+                    MeshMaterial2d(material.add(ColorMaterial::from_color(GREEN_500)))
+                }
             },
             transform,
-        ));
+        });
     }
 }
 
@@ -162,14 +183,14 @@ impl ParticleInteractionTable {
             if headers.is_empty() {
                 // First row: header row (,target,Red,Blue,Green)
                 headers = record.iter().map(|s| s.to_string()).collect();
-                println!("CSV Headers: {:?}", headers);
-                println!("Header length: {}", headers.len());
+                bevy::log::info!("CSV Headers: {:?}", headers);
+                bevy::log::info!("Header length: {}", headers.len());
                 continue;
             }
 
             // Parse subsequent rows
             // Format: source,target_val0,target_val1,target_val2
-            println!(
+            bevy::log::debug!(
                 "Row {}: {} columns, expected {}",
                 row_idx,
                 record.len(),
@@ -177,7 +198,7 @@ impl ParticleInteractionTable {
             );
 
             if record.len() < headers.len() {
-                eprintln!("Warning: Row {} has fewer columns than expected", row_idx);
+                bevy::log::warn!("Warning: Row {} has fewer columns than expected", row_idx);
                 row_idx += 1;
                 continue;
             }
@@ -202,7 +223,7 @@ impl ParticleInteractionTable {
 
                 table.interactions[target_idx][source_idx] = value;
 
-                println!(
+                bevy::log::debug!(
                     "Loaded: {}[{}] <- {}[{}] = {:.1}",
                     target_str, target_idx, source_str, source_idx, value
                 );
@@ -211,7 +232,7 @@ impl ParticleInteractionTable {
             row_idx += 1;
         }
 
-        println!("\nLoaded interaction table from {}:", path);
+        bevy::log::info!("\nLoaded interaction table from {}:", path);
         table.print_table();
 
         Ok(table)
@@ -238,31 +259,31 @@ impl ParticleInteractionTable {
         }
 
         wtr.flush()?;
-        println!("Saved interaction table to {}", path);
+        bevy::log::info!("Saved interaction table to {}", path);
         Ok(())
     }
 
     pub fn print_table(&self) {
-        println!(
-            "       {:>8} {:>8} {:>8}",
-            ParticleType::Red.as_str(),
-            ParticleType::Blue.as_str(),
-            ParticleType::Green.as_str()
-        );
-        println!(
-            "       {:>8} {:>8} {:>8}",
-            "--------", "--------", "--------"
-        );
+            bevy::log::info!(
+                "       {:>8} {:>8} {:>8}",
+                ParticleType::Red.as_str(),
+                ParticleType::Blue.as_str(),
+                ParticleType::Green.as_str()
+            );
+            bevy::log::info!(
+                "       {:>8} {:>8} {:>8}",
+                "--------", "--------", "--------"
+            );
 
         for target in ParticleType::all_types() {
-            print!("{:<6} |", target.as_str());
+            bevy::log::debug!("{:<6} |", target.as_str());
             for source in ParticleType::all_types() {
                 let value = self.get_interaction(target, source);
-                print!(" {:>8.1}", value);
+                bevy::log::debug!(" {:>8.1}", value);
             }
-            println!();
+            bevy::log::debug!("");
         }
-        println!();
+        bevy::log::info!("");
     }
 
     pub fn as_matrix(&self) -> &[[f32; ParticleType::COUNT]; ParticleType::COUNT] {
@@ -316,27 +337,29 @@ pub struct ParticlePlugin {
 }
 
 fn update_particle(
-    query: Query<(&mut Particle, &mut Transform), With<Mesh2d>>,
+    query: Query<(Entity, &ParticleType, &mut Velocity, &mut Transform), With<ParticleMarker>>,
     interaction_table: Res<ParticleInteractionTable>,
     config: Res<ParticleConfig>,
 ) {
-    let mut chunk: HashMap<(i32, i32), Vec<(Particle, Transform)>> = HashMap::with_capacity(1000);
-    for (p, t) in query.iter() {
+    let mut chunk: HashMap<(i32, i32), Vec<(Entity, ParticleType, Transform)>> =
+        HashMap::with_capacity(1000);
+    for (entity, ptype, _, t) in query.iter() {
         let x = (t.translation.x / config.d3) as i32;
         let y = (t.translation.y / config.d3) as i32;
         chunk
             .entry((x, y))
-            .and_modify(|inner| inner.push((p.to_owned(), t.to_owned())))
-            .or_insert([(p.to_owned(), t.to_owned())].into());
+            .and_modify(|inner| inner.push((entity, ptype.to_owned(), t.to_owned())))
+            .or_insert([(entity, ptype.to_owned(), t.to_owned())].into());
     }
 
-    for (mut particle, mut transform) in query {
-        let my_type = particle.particle_type;
+    for (entity, ptype, mut velocity, mut transform) in query {
+        let my_type = *ptype;
+        let my_index = entity.index();
 
         let chunk_x = (transform.translation.x / config.d3) as i32;
         let chunk_y = (transform.translation.y / config.d3) as i32;
 
-        let mut components: Vec<(Particle, Transform)> = Vec::with_capacity(1000);
+        let mut components: Vec<(Entity, ParticleType, Transform)> = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
             for y in chunk_y - 1..=chunk_y + 1 {
                 chunk
@@ -345,9 +368,10 @@ fn update_particle(
             }
         }
 
-        let acceleration = components.iter().filter(|(p, _)| p.id != particle.id).fold(
-            Vec3::default(),
-            |acc, (p, t)| {
+        let acceleration = components
+            .iter()
+            .filter(|(other_entity, _, _)| other_entity.index() != my_index)
+            .fold(Vec3::default(), |acc, (_, p, t)| {
                 let distance = transform.translation.distance(t.translation);
                 let direction = (t.translation - transform.translation) / distance;
 
@@ -364,34 +388,33 @@ fn update_particle(
                     (distance - config.d1) / config.d1
                 };
 
-                let other_type = p.particle_type;
+                let other_type = *p;
                 let strength = interaction_table.get_interaction(my_type, other_type);
                 let actual_acceleration = direction * strength * distance_factor;
 
                 acc + actual_acceleration
-            },
-        );
+            });
 
-        particle.velocity += acceleration * config.dt;
-        particle.velocity *= config.temperature.powf(config.dt);
+        velocity.value += acceleration * config.dt;
+        velocity.value *= config.temperature.powf(config.dt);
 
-        transform.translation += particle.velocity * config.dt;
+        transform.translation += velocity.value * config.dt;
 
         let half_width = config.map_width / 2.0;
         let half_height = config.map_height / 2.0;
 
         if transform.translation.x < -half_width {
             transform.translation.x = -half_width;
-            particle.velocity.x *= -1.0;
+            velocity.value.x *= -1.0;
         } else if transform.translation.x > half_width {
             transform.translation.x = half_width;
-            particle.velocity.x *= -1.0;
+            velocity.value.x *= -1.0;
         } else if transform.translation.y < -half_height {
             transform.translation.y = -half_height;
-            particle.velocity.y *= -1.0;
+            velocity.value.y *= -1.0;
         } else if transform.translation.y > half_height {
             transform.translation.y = half_height;
-            particle.velocity.y *= -1.0;
+            velocity.value.y *= -1.0;
         }
     }
 }
@@ -407,12 +430,10 @@ pub fn spawn_particle(
 
     let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
 
-    for i in 0..config.init_particle_num {
-        // 随机位置
+    for _ in 0..config.init_particle_num {
         let x = rng.gen_range(-config.map_width / 2.0..config.map_width / 2.0);
         let y = rng.gen_range(-config.map_height / 2.0..config.map_height / 2.0);
 
-        // 随机粒子类型
         let particle_type = particle_types[rng.gen_range(0..particle_types.len())];
 
         Particle::spawn(
@@ -421,12 +442,11 @@ pub fn spawn_particle(
             &mut material,
             Transform::from_xyz(x, y, 0.0),
             particle_type,
-            i,
         );
     }
 }
 
-pub fn clean_particle(mut commands: Commands, query: Query<Entity, With<Particle>>) {
+pub fn clean_particle(mut commands: Commands, query: Query<Entity, With<ParticleMarker>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
     }
@@ -444,14 +464,14 @@ fn setup(
     match ParticleInteractionTable::from_csv_file(csv_path) {
         Ok(loaded_table) => {
             *interaction_table = loaded_table;
-            println!(
+            bevy::log::info!(
                 "Successfully loaded particle interactions from {}",
                 csv_path
             );
         }
         Err(e) => {
-            println!("Could not load {}, using default interactions", csv_path);
-            println!("Error: {}", e);
+            bevy::log::warn!("Could not load {}, using default interactions", csv_path);
+            bevy::log::error!("Error: {}", e);
         }
     }
 
@@ -460,7 +480,7 @@ fn setup(
 
 fn respawn_particle(
     mut commands: Commands,
-    query: Query<Entity, With<Particle>>,
+    query: Query<Entity, With<ParticleMarker>>,
     meshes: ResMut<Assets<Mesh>>,
     meterial: ResMut<Assets<ColorMaterial>>,
     config: Res<ParticleConfig>,

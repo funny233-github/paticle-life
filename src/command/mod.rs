@@ -160,7 +160,7 @@ fn respawn_particle(
     mut commands: Commands,
     meshes: ResMut<Assets<Mesh>>,
     material: ResMut<Assets<ColorMaterial>>,
-    query: Query<Entity, With<Particle>>,
+    query: Query<Entity, With<ParticleMarker>>,
     config: Res<ParticleConfig>,
 ) {
     if let Some(Ok(RespawnParticle)) = log.take() {
