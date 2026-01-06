@@ -155,6 +155,85 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
 #[command(name = "respawn_particle")]
 struct RespawnParticle;
 
+#[derive(Parser, ConsoleCommand)]
+#[command(name = "interaction")]
+struct InteractionCommand {
+    /// Target particle type (Red, Blue, or Green)
+    target: ParticleType,
+    /// Source particle type (Red, Blue, or Green)
+    source: ParticleType,
+    /// Interaction force value
+    value: f32,
+}
+
+#[derive(Parser, ConsoleCommand)]
+#[command(name = "reset_interaction")]
+struct ResetInteractionCommand;
+
+#[derive(Parser, ConsoleCommand)]
+#[command(name = "random_interaction")]
+struct RandomInteractionCommand;
+
+fn interaction(
+    mut log: ConsoleCommand<InteractionCommand>,
+    mut interaction_table: ResMut<ParticleInteractionTable>,
+) {
+    if let Some(Ok(InteractionCommand { target, source, value })) = log.take() {
+        interaction_table.set_interaction(target, source, value);
+        reply!(
+            log,
+            "Set interaction {}[{}] <- {}[{}] = {:.1}",
+            target.as_str(),
+            target as usize,
+            source.as_str(),
+            source as usize,
+            value
+        );
+    }
+}
+
+fn reset_interaction(
+    mut log: ConsoleCommand<ResetInteractionCommand>,
+    mut interaction_table: ResMut<ParticleInteractionTable>,
+) {
+    if let Some(Ok(ResetInteractionCommand)) = log.take() {
+        let csv_path = "particle_interactions.csv";
+        match ParticleInteractionTable::from_csv_file(csv_path) {
+            Ok(loaded_table) => {
+                *interaction_table = loaded_table;
+                reply!(log, "Reset interactions from file: {}", csv_path);
+            }
+            Err(e) => {
+                reply!(
+                    log,
+                    "Warning: Could not load {}, keeping current interactions",
+                    csv_path
+                );
+                reply!(log, "Error: {}", e);
+            }
+        }
+    }
+}
+
+fn random_interaction(
+    mut log: ConsoleCommand<RandomInteractionCommand>,
+    mut interaction_table: ResMut<ParticleInteractionTable>,
+) {
+    if let Some(Ok(RandomInteractionCommand)) = log.take() {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        for target in ParticleType::all_types() {
+            for source in ParticleType::all_types() {
+                let value = rng.gen_range(-100.0..100.0);
+                interaction_table.set_interaction(target, source, value);
+            }
+        }
+        reply!(log, "Set all interactions to random values between -100.0 and 100.0");
+        interaction_table.print_table();
+    }
+}
+
 fn respawn_particle(
     mut log: ConsoleCommand<RespawnParticle>,
     mut commands: Commands,
@@ -176,6 +255,9 @@ impl Plugin for CommandPlugin {
     fn build(&self, app: &mut App) {
         app.add_console_command::<SetCommand, _>(set);
         app.add_console_command::<PrintCommand, _>(print);
+        app.add_console_command::<InteractionCommand, _>(interaction);
+        app.add_console_command::<ResetInteractionCommand, _>(reset_interaction);
+        app.add_console_command::<RandomInteractionCommand, _>(random_interaction);
         app.add_console_command::<RespawnParticle, _>(respawn_particle);
     }
 }
