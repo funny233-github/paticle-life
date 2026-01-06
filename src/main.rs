@@ -26,7 +26,7 @@ fn update_fps(mut query: Query<&mut Text>, diagnostics: Res<DiagnosticsStore>) {
             && let Some(value) = fps.smoothed()
         {
             text.0 = format!(
-                "FPS: {:.1}\nPress ` (backtick) to toggle console\nGame: T=toggle update, WASD=move, -/+=zoom\nConsole: Type commands and press Enter",
+                "FPS: {:.1}\nPress ` (backtick) to toggle console\nGame: T=toggle update, R=respawn particle, WASD=move, -/+=zoom\nConsole: Type commands and press Enter",
                 value
             );
         }

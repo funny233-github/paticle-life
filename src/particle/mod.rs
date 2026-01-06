@@ -9,7 +9,6 @@ use std::str::FromStr;
 const RED: Color = Color::hsl(360. * 0.0, 0.95, 0.7);
 const BLUE: Color = Color::hsl(360. * 0.66, 0.95, 0.7);
 const GREEN: Color = Color::hsl(360. * 0.33, 0.95, 0.7);
-const DT: f32 = 0.01;
 
 /// 粒子更新切换状态资源
 #[derive(Resource, Default)]
@@ -288,6 +287,8 @@ pub struct ParticleConfig {
 
     pub repel_force: f32,
     pub temperature: f32,
+
+    pub dt: f32,
 }
 
 impl Default for ParticleConfig {
@@ -303,6 +304,8 @@ impl Default for ParticleConfig {
 
             repel_force: -100.0,
             temperature: 0.1,
+
+            dt: 0.1,
         }
     }
 }
@@ -369,10 +372,10 @@ fn update_particle(
             },
         );
 
-        particle.velocity += acceleration * DT;
-        particle.velocity *= config.temperature.powf(DT);
+        particle.velocity += acceleration * config.dt;
+        particle.velocity *= config.temperature.powf(config.dt);
 
-        transform.translation += particle.velocity * DT;
+        transform.translation += particle.velocity * config.dt;
 
         let half_width = config.map_width / 2.0;
         let half_height = config.map_height / 2.0;
@@ -455,6 +458,21 @@ fn setup(
     spawn_particle(commands, meshes, material, config)
 }
 
+fn respawn_particle(
+    mut commands: Commands,
+    query: Query<Entity, With<Particle>>,
+    meshes: ResMut<Assets<Mesh>>,
+    meterial: ResMut<Assets<ColorMaterial>>,
+    config: Res<ParticleConfig>,
+    keys: Res<ButtonInput<KeyCode>>,
+    input_focus: Res<InputFocus>,
+) {
+    if input_focus.is_game() && keys.just_pressed(KeyCode::KeyR) {
+        clean_particle(commands.reborrow(), query);
+        spawn_particle(commands, meshes, meterial, config)
+    }
+}
+
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config.to_owned());
@@ -465,5 +483,6 @@ impl Plugin for ParticlePlugin {
             Update,
             update_particle.run_if(|toggle: Res<ParticleUpdateToggle>| toggle.enabled),
         );
+        app.add_systems(Update, respawn_particle);
     }
 }
