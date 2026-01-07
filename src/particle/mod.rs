@@ -225,7 +225,11 @@ impl ParticleInteractionTable {
 
                 bevy::log::debug!(
                     "Loaded: {}[{}] <- {}[{}] = {:.1}",
-                    target_str, target_idx, source_str, source_idx, value
+                    target_str,
+                    target_idx,
+                    source_str,
+                    source_idx,
+                    value
                 );
             }
 
@@ -264,16 +268,18 @@ impl ParticleInteractionTable {
     }
 
     pub fn print_table(&self) {
-            bevy::log::info!(
-                "       {:>8} {:>8} {:>8}",
-                ParticleType::Red.as_str(),
-                ParticleType::Blue.as_str(),
-                ParticleType::Green.as_str()
-            );
-            bevy::log::info!(
-                "       {:>8} {:>8} {:>8}",
-                "--------", "--------", "--------"
-            );
+        bevy::log::info!(
+            "       {:>8} {:>8} {:>8}",
+            ParticleType::Red.as_str(),
+            ParticleType::Blue.as_str(),
+            ParticleType::Green.as_str()
+        );
+        bevy::log::info!(
+            "       {:>8} {:>8} {:>8}",
+            "--------",
+            "--------",
+            "--------"
+        );
 
         for target in ParticleType::all_types() {
             bevy::log::debug!("{:<6} |", target.as_str());
@@ -425,16 +431,13 @@ pub fn spawn_particle(
     mut material: ResMut<Assets<ColorMaterial>>,
     config: Res<ParticleConfig>,
 ) {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
     let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
 
     for _ in 0..config.init_particle_num {
-        let x = rng.gen_range(-config.map_width / 2.0..config.map_width / 2.0);
-        let y = rng.gen_range(-config.map_height / 2.0..config.map_height / 2.0);
+        let x = rand::random_range(-config.map_width / 2.0..config.map_width / 2.0);
+        let y = rand::random_range(-config.map_height / 2.0..config.map_height / 2.0);
 
-        let particle_type = particle_types[rng.gen_range(0..particle_types.len())];
+        let particle_type = particle_types[rand::random_range(0..particle_types.len())];
 
         Particle::spawn(
             &mut commands,

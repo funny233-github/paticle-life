@@ -36,7 +36,12 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
             SetSubcommand::Boundary { width, height } => {
                 config.map_width = width;
                 config.map_height = height;
-                reply!(log, "set map width: {:.2}, height: {:.2} successfully", width, height);
+                reply!(
+                    log,
+                    "set map width: {:.2}, height: {:.2} successfully",
+                    width,
+                    height
+                );
             }
             SetSubcommand::D1 { value } => {
                 config.d1 = value;
@@ -109,10 +114,21 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
     if let Some(Ok(PrintCommand { target })) = log.take() {
         match target {
             PrintTarget::Boundary => {
-                reply!(log, "map width: {:.2}, height: {:.2}", config.map_width, config.map_height);
+                reply!(
+                    log,
+                    "map width: {:.2}, height: {:.2}",
+                    config.map_width,
+                    config.map_height
+                );
             }
             PrintTarget::D => {
-                reply!(log, "d1: {:.2}, d2: {:.2}, d3: {:.2}", config.d1, config.d2, config.d3);
+                reply!(
+                    log,
+                    "d1: {:.2}, d2: {:.2}, d3: {:.2}",
+                    config.d1,
+                    config.d2,
+                    config.d3
+                );
             }
             PrintTarget::RepelForce => {
                 reply!(log, "repel_force: {:.2}", config.repel_force);
@@ -178,7 +194,12 @@ fn interaction(
     mut log: ConsoleCommand<InteractionCommand>,
     mut interaction_table: ResMut<ParticleInteractionTable>,
 ) {
-    if let Some(Ok(InteractionCommand { target, source, value })) = log.take() {
+    if let Some(Ok(InteractionCommand {
+        target,
+        source,
+        value,
+    })) = log.take()
+    {
         interaction_table.set_interaction(target, source, value);
         reply!(
             log,
@@ -220,16 +241,16 @@ fn random_interaction(
     mut interaction_table: ResMut<ParticleInteractionTable>,
 ) {
     if let Some(Ok(RandomInteractionCommand)) = log.take() {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
         for target in ParticleType::all_types() {
             for source in ParticleType::all_types() {
-                let value = rng.gen_range(-100.0..100.0);
+                let value = rand::random_range(-100.0..100.0);
                 interaction_table.set_interaction(target, source, value);
             }
         }
-        reply!(log, "Set all interactions to random values between -100.0 and 100.0");
+        reply!(
+            log,
+            "Set all interactions to random values between -100.0 and 100.0"
+        );
         interaction_table.print_table();
     }
 }

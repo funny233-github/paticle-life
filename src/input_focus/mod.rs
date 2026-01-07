@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_console::ConsoleOpen;
 
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputFocus {
@@ -32,17 +33,11 @@ impl InputFocus {
     }
 }
 
-pub fn toggle_input_focus(keys: Res<ButtonInput<KeyCode>>, mut input_focus: ResMut<InputFocus>) {
-    if keys.just_pressed(KeyCode::Backquote) {
-        input_focus.toggle();
-        bevy::log::info!(
-            "Input focus switched to: {}",
-            if input_focus.is_game() {
-                "Game"
-            } else {
-                "Console"
-            }
-        );
+pub fn update_input_focus(console_open: Res<ConsoleOpen>, mut input_focus: ResMut<InputFocus>) {
+    if console_open.open {
+        input_focus.set_console();
+    } else {
+        input_focus.set_game();
     }
 }
 
@@ -52,6 +47,6 @@ impl Plugin for InputFocusPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(InputFocus::default());
 
-        app.add_systems(Update, toggle_input_focus);
+        app.add_systems(Update, update_input_focus);
     }
 }
