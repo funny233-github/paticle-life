@@ -1,9 +1,11 @@
-use bevy::diagnostic::DiagnosticsStore;
-use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use bevy::app::{App, Startup, Update};
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use bevy::sprite_render::*;
+use bevy::sprite_render::Wireframe2dPlugin;
 use bevy_console::{ConsoleConfiguration, ConsolePlugin};
-use bevy_game_test::{camera_move::*, command::*, input_focus::*, particle::*};
+use bevy_game_test::{
+    CameraMovePlugin, CommandPlugin, InputFocusPlugin, ParticlePlugin, resources::*,
+};
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
