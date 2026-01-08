@@ -1,8 +1,43 @@
-use crate::particle::*;
+//! Console command system for runtime configuration
+//!
+//! This module provides a command-line interface for configuring particle
+//! simulation parameters at runtime. Commands are accessed via the in-game
+//! console (opened with backtick ` key).
+//!
+//! # Available Commands
+//!
+//! ## `set` - Set simulation parameters
+//! - `set boundary <width> <height>` - Set map boundary dimensions
+//! - `set d1 <value>` - Set collision distance
+//! - `set d2 <value>` - Set interaction transition start distance
+//! - `set d3 <value>` - Set interaction max distance
+//! - `set repel_force <value>` - Set collision repel force
+//! - `set temperature <value>` - Set velocity damping coefficient
+//! - `set dt <value>` - Set time step
+//! - `set init_particle_num <value>` - Set initial particle count
+//!
+//! ## `print` - Display current values
+//! - `print boundary` - Show map boundary
+//! - `print d` - Show all distance values
+//! - `print repel_force` - Show repel force
+//! - `print temperature` - Show temperature
+//! - `print dt` - Show time step
+//! - `print config` - Show full configuration
+//!
+//! ## `interaction` - Manage particle interactions
+//! - `interaction <target> <source> <value>` - Set interaction between particle types
+//! - `reset_interaction` - Reset interactions from CSV file
+//! - `random_interaction` - Set all interactions to random values
+//!
+//! ## `respawn_particle` - Respawn particles
+//! - `respawn_particle` - Remove all particles and spawn new ones
+
+use crate::particle::{ParticleConfig, ParticleType, ParticleInteractionTable, ParticleMarker, clean_particle, spawn_particle};
 use bevy::prelude::*;
-use bevy_console::*;
+use bevy_console::{clap, ConsoleCommand, reply, AddConsoleCommand};
 use clap::{Parser, Subcommand};
 
+/// Subcommands for the `set` console command
 #[derive(Subcommand, Clone, PartialEq)]
 enum SetSubcommand {
     /// Set map boundary dimensions
@@ -23,6 +58,7 @@ enum SetSubcommand {
     InitParticleNum { value: usize },
 }
 
+/// Console command for setting simulation parameters
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "set")]
 struct SetCommand {
@@ -30,6 +66,10 @@ struct SetCommand {
     subcommand: SetSubcommand,
 }
 
+/// Handle the `set` console command
+///
+/// Updates particle configuration with the specified parameter value.
+/// Changes take effect immediately in the running simulation.
 fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) {
     if let Some(Ok(SetCommand { subcommand })) = log.take() {
         match subcommand {
@@ -75,6 +115,7 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
     }
 }
 
+/// Target parameter for the `print` console command
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PrintTarget {
     Boundary,
@@ -90,26 +131,29 @@ impl std::str::FromStr for PrintTarget {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "boundary" => Ok(PrintTarget::Boundary),
-            "d" => Ok(PrintTarget::D),
-            "repel_force" => Ok(PrintTarget::RepelForce),
-            "temperature" => Ok(PrintTarget::Temperature),
-            "dt" => Ok(PrintTarget::Dt),
-            "config" => Ok(PrintTarget::Config),
-            _ => Err(format!(
-                "Invalid print target. Valid options: boundary, d, repel_force, temperature, dt, config"
-            )),
+            "boundary" => Ok(Self::Boundary),
+            "d" => Ok(Self::D),
+            "repel_force" => Ok(Self::RepelForce),
+            "temperature" => Ok(Self::Temperature),
+            "dt" => Ok(Self::Dt),
+            "config" => Ok(Self::Config),
+            _ => Err("Invalid print target. Valid options: boundary, d, repel_force, temperature, dt, config".to_string()),
         }
     }
 }
 
+/// Console command for printing current configuration values
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "print")]
 struct PrintCommand {
-    /// What to print: boundary, d, repel_force, temperature, dt, or config
+    /// What to print: boundary, d, `repel_force`, temperature, dt, or config
     target: PrintTarget,
 }
 
+/// Handle the `print` console command
+///
+/// Displays the current value of the specified configuration parameter.
+#[allow(clippy::needless_pass_by_value)]
 fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
     if let Some(Ok(PrintCommand { target })) = log.take() {
         match target {
@@ -167,10 +211,12 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
     }
 }
 
+/// Console command to respawn all particles
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "respawn_particle")]
 struct RespawnParticle;
 
+/// Console command to set interaction between particle types
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "interaction")]
 struct InteractionCommand {
@@ -182,14 +228,21 @@ struct InteractionCommand {
     value: f32,
 }
 
+/// Console command to reset interactions from CSV file
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "reset_interaction")]
 struct ResetInteractionCommand;
 
+/// Console command to set all interactions to random values
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "random_interaction")]
 struct RandomInteractionCommand;
 
+/// Handle the `interaction` console command
+///
+/// Sets the interaction force between two particle types.
+///
+/// Positive values cause attraction, negative values cause repulsion.
 fn interaction(
     mut log: ConsoleCommand<InteractionCommand>,
     mut interaction_table: ResMut<ParticleInteractionTable>,
@@ -213,11 +266,14 @@ fn interaction(
     }
 }
 
+/// Handle the `reset_interaction` console command
+///
+/// Resets all particle interactions to the values stored in the CSV file.
 fn reset_interaction(
     mut log: ConsoleCommand<ResetInteractionCommand>,
     mut interaction_table: ResMut<ParticleInteractionTable>,
 ) {
-    if let Some(Ok(ResetInteractionCommand)) = log.take() {
+    if matches!(log.take(), Some(Ok(ResetInteractionCommand))) {
         let csv_path = "particle_interactions.csv";
         match ParticleInteractionTable::from_csv_file(csv_path) {
             Ok(loaded_table) => {
@@ -236,11 +292,14 @@ fn reset_interaction(
     }
 }
 
+/// Handle the `random_interaction` console command
+///
+/// Sets all particle interactions to random values between -100.0 and 100.0.
 fn random_interaction(
     mut log: ConsoleCommand<RandomInteractionCommand>,
     mut interaction_table: ResMut<ParticleInteractionTable>,
 ) {
-    if let Some(Ok(RandomInteractionCommand)) = log.take() {
+    if matches!(log.take(), Some(Ok(RandomInteractionCommand))) {
         for target in ParticleType::all_types() {
             for source in ParticleType::all_types() {
                 let value = rand::random_range(-100.0..100.0);
@@ -255,6 +314,10 @@ fn random_interaction(
     }
 }
 
+/// Handle the `respawn_particle` console command
+///
+/// Removes all existing particles and spawns a new set according to the
+/// current configuration.
 fn respawn_particle(
     mut log: ConsoleCommand<RespawnParticle>,
     mut commands: Commands,
@@ -263,13 +326,22 @@ fn respawn_particle(
     query: Query<Entity, With<ParticleMarker>>,
     config: Res<ParticleConfig>,
 ) {
-    if let Some(Ok(RespawnParticle)) = log.take() {
+    if matches!(log.take(), Some(Ok(RespawnParticle))) {
         clean_particle(commands.reborrow(), query);
         spawn_particle(commands, meshes, material, config);
         reply!(log, "Respawned all particles");
     }
 }
 
+/// Plugin that registers all console commands
+///
+/// This plugin registers:
+/// - `set` command
+/// - `print` command
+/// - `interaction` command
+/// - `reset_interaction` command
+/// - `random_interaction` command
+/// - `respawn_particle` command
 pub struct CommandPlugin;
 
 impl Plugin for CommandPlugin {

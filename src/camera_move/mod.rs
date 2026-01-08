@@ -1,16 +1,24 @@
+//! Camera movement and control systems
+//!
+//! This module provides camera movement controls for 2D games, including
+//! panning (WASD keys) and zooming (+/- keys). The camera only responds to
+//! input when the game has focus (as opposed to console focus).
+
 use crate::input_focus::InputFocus;
 use bevy::prelude::*;
 
-/// 相机移动控制参数
+/// Camera movement control parameters
+///
+/// Configuration for camera movement speed and zoom limits.
 #[derive(Resource, Clone, Copy)]
 pub struct CameraMoveConfig {
-    /// 相机移动速度
+    /// Camera movement speed in units per second
     pub speed: f32,
-    /// 缩放速度
+    /// Zoom speed multiplier
     pub zoom_speed: f32,
-    /// 最小缩放倍数
+    /// Minimum zoom scale (zoomed out)
     pub min_scale: f32,
-    /// 最大缩放倍数
+    /// Maximum zoom scale (zoomed in)
     pub max_scale: f32,
 }
 
@@ -25,12 +33,22 @@ impl Default for CameraMoveConfig {
     }
 }
 
-/// 相机移动和缩放控制
+/// Camera movement and zoom control system
 ///
-/// 功能：
-/// - WASD: 移动相机
-/// - +/-: 缩放相机
-/// - 只在游戏焦点时响应输入
+/// Controls:
+/// - **WASD**: Move camera up/left/down/right
+/// - **+/-**: Zoom in/out
+///
+/// This system only responds to input when the game has focus
+/// (as opposed to the console focus).
+///
+/// # System Parameters
+/// - `Query<(&mut Transform, &Camera), With<Camera2d>>`: Camera transform and projection
+/// - `Res<ButtonInput<KeyCode>>`: Keyboard input
+/// - `Res<Time>`: Time delta for frame-independent movement
+/// - `Res<InputFocus>`: Current focus state (game vs console)
+/// - `Res<CameraMoveConfig>`: Movement configuration
+#[allow(clippy::needless_pass_by_value)]
 pub fn move_camera(
     mut camera: Query<(&mut Transform, &Camera), With<Camera2d>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -38,7 +56,6 @@ pub fn move_camera(
     input_focus: Res<InputFocus>,
     config: Res<CameraMoveConfig>,
 ) {
-    // 只在游戏焦点时处理相机移动
     if !input_focus.is_game() {
         return;
     }
@@ -50,7 +67,6 @@ pub fn move_camera(
     let mut direction = Vec3::ZERO;
     let current_scale = transform.scale;
 
-    // 移动控制
     if keys.pressed(KeyCode::KeyW) {
         direction.y += 1.0;
     }
@@ -64,35 +80,34 @@ pub fn move_camera(
         direction.x += 1.0;
     }
 
-    // 应用移动
     if direction != Vec3::ZERO {
-        transform.translation += direction.normalize() * config.speed * current_scale * time.delta_secs();
+        transform.translation +=
+            direction.normalize() * config.speed * current_scale * time.delta_secs();
     }
 
-    // 缩放控制
     if keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadAdd) {
-        transform.scale *= 1.0 + config.zoom_speed * time.delta_secs();
+        transform.scale *= config.zoom_speed.mul_add(time.delta_secs(), 1.0);
     }
     if keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadSubtract) {
-        transform.scale *= 1.0 - config.zoom_speed * time.delta_secs();
+        transform.scale *= config.zoom_speed.mul_add(-time.delta_secs(), 1.0);
     }
 
-    // 限制缩放范围
-    transform.scale = transform.scale.clamp(
-        Vec3::splat(config.min_scale),
-        Vec3::splat(config.max_scale),
-    );
+    transform.scale = transform
+        .scale
+        .clamp(Vec3::splat(config.min_scale), Vec3::splat(config.max_scale));
 }
 
-/// 插件：注册相机移动系统
+/// Plugin that registers camera movement system
+///
+/// This plugin:
+/// - Inserts the default [`CameraMoveConfig`] resource
+/// - Registers the [`move_camera`] system to run in the `Update` schedule
 pub struct CameraMovePlugin;
 
 impl Plugin for CameraMovePlugin {
     fn build(&self, app: &mut App) {
-        // 插入默认的相机移动配置
         app.insert_resource(CameraMoveConfig::default());
 
-        // 注册相机移动系统
         app.add_systems(Update, move_camera);
     }
 }

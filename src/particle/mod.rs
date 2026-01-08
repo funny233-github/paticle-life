@@ -1,5 +1,47 @@
-use crate::input_focus::*;
-use bevy::color::palettes::tailwind::*;
+//! Particle simulation system with physics and rendering
+//!
+//! This module provides a complete particle simulation system with:
+//! - Separated physics (`Position`) and rendering (`Transform`) updates
+//! - Configurable particle interaction tables
+//! - Spatial partitioning for efficient neighbor queries
+//! - Boundary collision handling
+//! - Console commands for runtime configuration
+//!
+//! # Architecture
+//!
+//! The particle system is designed with clear separation of concerns:
+//!
+//! 1. **Physics Update** (`update_particle`): Computes particle motion,
+//!    interactions, and boundary collisions using `Position` component.
+//!
+//! 2. **Render Sync** (`sync_transform`): Updates the `Transform` component
+//!    to match `Position`, ensuring the rendering system displays
+//!    particles at their correct locations.
+//!
+//! This separation allows the physics simulation to be paused or updated
+//! independently from rendering, and makes the code easier to reason about.
+//!
+//! # Particle Types
+//!
+//! Particles have three types: Red, Blue, and Green. Each type can have
+//! different interaction forces with every other type (including itself).
+//! These interactions are stored in a [`ParticleInteractionTable`].
+//!
+//! # Distance Zones
+//!
+//! The particle interaction system uses three distance parameters:
+//!
+//! - **d1**: Collision distance. Particles closer than this experience
+//!   strong repulsion.
+//!
+//! - **d2**: Interaction transition start. Between d1 and d2, forces
+//!   increase linearly from 0.
+//!
+//! - **d3**: Maximum interaction distance. Beyond this, particles don't
+//!   interact. Also used as spatial partition chunk size.
+
+use crate::input_focus::InputFocus;
+use bevy::color::palettes::tailwind::{RED_500, BLUE_500, GREEN_500};
 use bevy::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
@@ -7,11 +49,15 @@ use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 
+/// Type alias for particle chunk data in spatial partitioning
+type ParticleChunk = Vec<(Entity, ParticleType, Position)>;
+
 #[derive(Resource, Default)]
 struct ParticleUpdateToggle {
     enabled: bool,
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn toggle_particle_update(
     keys: Res<ButtonInput<KeyCode>>,
     mut toggle: ResMut<ParticleUpdateToggle>,
@@ -30,31 +76,44 @@ fn toggle_particle_update(
     }
 }
 
+/// Type of particle in the simulation
+///
+/// Each particle type can have different interaction forces with
+/// every other particle type.
 #[derive(Component, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(usize)]
 pub enum ParticleType {
+    /// Red particle type
     #[default]
     Red = 0,
+    /// Blue particle type
     Blue = 1,
+    /// Green particle type
     Green = 2,
 }
 
 impl ParticleType {
+    /// Total number of particle types
     pub const COUNT: usize = 3;
 
-    pub fn all_types() -> [ParticleType; Self::COUNT] {
-        [ParticleType::Red, ParticleType::Blue, ParticleType::Green]
+    /// Returns an array containing all particle types
+    #[must_use] 
+    pub const fn all_types() -> [Self; Self::COUNT] {
+        [Self::Red, Self::Blue, Self::Green]
     }
 
-    pub fn as_str(&self) -> &'static str {
+    /// Returns string representation of this particle type
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            ParticleType::Red => "Red",
-            ParticleType::Blue => "Blue",
-            ParticleType::Green => "Green",
+            Self::Red => "Red",
+            Self::Blue => "Blue",
+            Self::Green => "Green",
         }
     }
 }
 
+/// Error returned when parsing an invalid particle type string
 #[derive(Debug)]
 pub struct ParticleTypeError;
 
@@ -74,45 +133,113 @@ impl FromStr for ParticleType {
 
     fn from_str(s: &str) -> Result<Self, ParticleTypeError> {
         match s.to_lowercase().as_str() {
-            "red" => Ok(ParticleType::Red),
-            "blue" => Ok(ParticleType::Blue),
-            "green" => Ok(ParticleType::Green),
+            "red" => Ok(Self::Red),
+            "blue" => Ok(Self::Blue),
+            "green" => Ok(Self::Green),
             _ => Err(ParticleTypeError),
         }
     }
 }
 
+/// Velocity component for particles
+///
+/// Stores the velocity vector for physics calculations.
+/// This is separate from position to allow for clean physics updates.
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Velocity {
+    /// Velocity vector (units per second)
     pub value: Vec3,
 }
 
 impl Velocity {
-    pub fn new(value: Vec3) -> Self {
+    /// Creates a new velocity from a vector
+    #[must_use] 
+    pub const fn new(value: Vec3) -> Self {
         Self { value }
     }
 
-    pub fn from_xyz(x: f32, y: f32, z: f32) -> Self {
+    /// Creates a new velocity from x, y, z components
+    #[must_use] 
+    pub const fn from_xyz(x: f32, y: f32, z: f32) -> Self {
         Self {
             value: Vec3::new(x, y, z),
         }
     }
 }
 
+/// Position component for particles
+///
+/// Stores the position vector for physics calculations.
+/// This is separate from `Transform` to allow the physics system
+/// to update positions independently from rendering.
+///
+/// The physics system updates `Position`, while `sync_transform`
+/// copies it to `Transform` for rendering.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Position {
+    /// Position vector in world space
+    pub value: Vec3,
+}
+
+impl Position {
+    /// Creates a new position from a vector
+    #[must_use] 
+    pub const fn new(value: Vec3) -> Self {
+        Self { value }
+    }
+
+    /// Creates a new position from x, y, z components
+    #[must_use] 
+    pub const fn from_xyz(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            value: Vec3::new(x, y, z),
+        }
+    }
+}
+
+/// Marker component for particles
+///
+/// Used in queries to identify entities that are particles.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct ParticleMarker;
 
+/// Bundle for spawning a particle entity
+///
+/// Contains all components needed for a particle:
+/// - Particle type marker
+/// - Particle type enum
+/// - Velocity for physics
+/// - Position for physics (separate from Transform)
+/// - Mesh for rendering
+/// - Material for rendering
+/// - Transform for rendering
 #[derive(Bundle, Debug, Clone)]
 pub struct Particle {
+    /// Marker component identifying this as a particle
     pub marker: ParticleMarker,
+    /// Type of this particle
     pub particle_type: ParticleType,
+    /// Velocity for physics updates
     pub velocity: Velocity,
+    /// Position for physics (separate from Transform)
+    pub position: Position,
+    /// 2D mesh for rendering
     pub mesh: Mesh2d,
+    /// Material for rendering
     pub material: MeshMaterial2d<ColorMaterial>,
+    /// Transform for rendering (synced from Position)
     pub transform: Transform,
 }
 
 impl Particle {
+    /// Spawns a new particle entity with given properties
+    ///
+    /// # Arguments
+    /// - `commands`: Bevy command queue
+    /// - `meshes`: Mesh assets resource
+    /// - `material`: Material assets resource
+    /// - `transform`: Initial transform (position will be copied to Position component)
+    /// - `particle_type`: Type of particle to spawn
     pub fn spawn(
         commands: &mut Commands,
         meshes: &mut ResMut<Assets<Mesh>>,
@@ -120,10 +247,11 @@ impl Particle {
         transform: Transform,
         particle_type: ParticleType,
     ) {
-        commands.spawn(Particle {
+        commands.spawn(Self {
             marker: ParticleMarker,
             particle_type,
             velocity: Velocity::new(Vec3::default()),
+            position: Position::new(transform.translation),
             mesh: Mesh2d(meshes.add(Circle::new(10.0))),
             material: match particle_type {
                 ParticleType::Red => {
@@ -141,23 +269,39 @@ impl Particle {
     }
 }
 
+/// Particle interaction table
+///
+/// Stores interaction forces between all pairs of particle types.
+/// The table is indexed by [target][source], giving the force
+/// that a source particle exerts on a target particle.
+///
+/// Positive values cause attraction, negative values cause repulsion.
 #[derive(Debug, Resource, Clone, Default)]
 pub struct ParticleInteractionTable {
     interactions: [[f32; ParticleType::COUNT]; ParticleType::COUNT],
 }
 
 impl ParticleInteractionTable {
-    pub fn new() -> Self {
+    /// Creates a new interaction table with all zeros
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {
             interactions: [[0.0; ParticleType::COUNT]; ParticleType::COUNT],
         }
     }
 
-    pub fn get_interaction(&self, target: ParticleType, source: ParticleType) -> f32 {
+    /// Gets the interaction force between two particle types
+    ///
+    /// Returns the force that a source particle exerts on a target particle.
+    #[must_use] 
+    pub const fn get_interaction(&self, target: ParticleType, source: ParticleType) -> f32 {
         self.interactions[target as usize][source as usize]
     }
 
-    pub fn set_interaction(
+    /// Sets the interaction force between two particle types
+    ///
+    /// Sets the force that a source particle exerts on a target particle.
+    pub const fn set_interaction(
         &mut self,
         target: ParticleType,
         source: ParticleType,
@@ -166,6 +310,20 @@ impl ParticleInteractionTable {
         self.interactions[target as usize][source as usize] = acceleration;
     }
 
+    /// Loads interaction table from a CSV file
+    ///
+    /// CSV format:
+    /// - First row: headers (,target,Red,Blue,Green)
+    /// - Subsequent rows: `source_type,red_val,blue_val,green_val`
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The file cannot be opened
+    /// - The CSV format is invalid
+    /// - The data cannot be parsed correctly
+    ///
+    /// # Returns
+    /// A new [`ParticleInteractionTable`] with loaded values
     pub fn from_csv_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let mut table = Self::new();
 
@@ -182,7 +340,7 @@ impl ParticleInteractionTable {
 
             if headers.is_empty() {
                 // First row: header row (,target,Red,Blue,Green)
-                headers = record.iter().map(|s| s.to_string()).collect();
+                headers = record.iter().map(|s: &str| s.to_string()).collect();
                 bevy::log::info!("CSV Headers: {:?}", headers);
                 bevy::log::info!("Header length: {}", headers.len());
                 continue;
@@ -242,6 +400,15 @@ impl ParticleInteractionTable {
         Ok(table)
     }
 
+    /// Saves interaction table to a CSV file
+    ///
+    /// Writes the current interaction values to a CSV file that
+    /// can be loaded later with [`from_csv_file`].
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The file cannot be created or written to
+    /// - The data cannot be serialized to CSV
     pub fn to_csv_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut wtr = csv::Writer::from_path(path)?;
 
@@ -267,6 +434,10 @@ impl ParticleInteractionTable {
         Ok(())
     }
 
+    /// Prints the interaction table to the console
+    ///
+    /// Outputs a formatted table showing all interaction forces
+    /// between particle types.
     pub fn print_table(&self) {
         bevy::log::info!(
             "       {:>8} {:>8} {:>8}",
@@ -292,29 +463,41 @@ impl ParticleInteractionTable {
         bevy::log::info!("");
     }
 
-    pub fn as_matrix(&self) -> &[[f32; ParticleType::COUNT]; ParticleType::COUNT] {
+    /// Returns a reference to the underlying interaction matrix
+    #[must_use] 
+    pub const fn as_matrix(&self) -> &[[f32; ParticleType::COUNT]; ParticleType::COUNT] {
         &self.interactions
     }
 
-    pub fn as_matrix_mut(&mut self) -> &mut [[f32; ParticleType::COUNT]; ParticleType::COUNT] {
+    /// Returns a mutable reference to the underlying interaction matrix
+    pub const fn as_matrix_mut(&mut self) -> &mut [[f32; ParticleType::COUNT]; ParticleType::COUNT] {
         &mut self.interactions
     }
 }
 
+/// Configuration for particle simulation
+///
+/// Contains all tunable parameters for the particle system.
+/// These can be modified at runtime via console commands.
 #[derive(Debug, Resource, Clone)]
 pub struct ParticleConfig {
+    /// Initial number of particles to spawn
     pub init_particle_num: usize,
+    /// Width of the simulation map boundary
     pub map_width: f32,
+    /// Height of the simulation map boundary
     pub map_height: f32,
-
-    // ParticleInteractionDistanceLayer
+    /// Collision distance (particles closer than this repel)
     pub d1: f32,
+    /// Interaction transition start distance
     pub d2: f32,
+    /// Maximum interaction distance and spatial partition chunk size
     pub d3: f32,
-
+    /// Force magnitude for collision repulsion
     pub repel_force: f32,
+    /// Temperature coefficient for velocity damping (friction)
     pub temperature: f32,
-
+    /// Time step for physics updates
     pub dt: f32,
 }
 
@@ -337,35 +520,65 @@ impl Default for ParticleConfig {
     }
 }
 
-#[derive(Debug, Default)]
+/// Plugin for particle simulation system
+///
+/// This plugin:
+/// - Inserts the particle configuration resource
+/// - Registers all particle simulation systems
+/// - Spawns initial particles
+///
+/// # Systems
+/// - `setup` (Startup): Loads interactions and spawns particles
+/// - `toggle_particle_update` (Update): Toggles physics updates with T key
+/// - `update_particle` (Update, conditional): Updates particle physics
+/// - `sync_transform` (Update): Syncs Position to Transform for rendering
+/// - `respawn_particle` (Update): Respawns particles when requested
+#[derive(Debug)]
 pub struct ParticlePlugin {
+    /// Configuration for the particle system
     pub config: ParticleConfig,
 }
 
+/// Update particle physics positions
+///
+/// This system updates only the `Position` and `Velocity` components.
+/// It performs:
+///
+/// 1. Spatial partitioning for efficient neighbor queries
+/// 2. Calculation of interaction forces between particles
+/// 3. Collision detection and resolution
+/// 4. Velocity integration and boundary checks
+///
+/// The `sync_transform` system will copy updated positions to the
+/// `Transform` component for rendering.
+#[allow(clippy::needless_pass_by_value)]
 fn update_particle(
-    query: Query<(Entity, &ParticleType, &mut Velocity, &mut Transform), With<ParticleMarker>>,
+    query: Query<(Entity, &ParticleType, &mut Velocity, &mut Position), With<ParticleMarker>>,
     interaction_table: Res<ParticleInteractionTable>,
     config: Res<ParticleConfig>,
 ) {
-    let mut chunk: HashMap<(i32, i32), Vec<(Entity, ParticleType, Transform)>> =
-        HashMap::with_capacity(1000);
-    for (entity, ptype, _, t) in query.iter() {
-        let x = (t.translation.x / config.d3) as i32;
-        let y = (t.translation.y / config.d3) as i32;
+    let mut chunk: HashMap<(i32, i32), ParticleChunk> = HashMap::with_capacity(1000);
+    for (entity, ptype, _, pos) in query.iter() {
+        #[allow(clippy::cast_possible_truncation)]
+        let x = (pos.value.x / config.d3) as i32;
+        #[allow(clippy::cast_possible_truncation)]
+        let y = (pos.value.y / config.d3) as i32;
         chunk
             .entry((x, y))
-            .and_modify(|inner| inner.push((entity, ptype.to_owned(), t.to_owned())))
-            .or_insert([(entity, ptype.to_owned(), t.to_owned())].into());
+            .and_modify(|inner| inner.push((entity, ptype.to_owned(), pos.to_owned())))
+            .or_insert_with(|| [(entity, ptype.to_owned(), pos.to_owned())].into());
     }
 
-    for (entity, ptype, mut velocity, mut transform) in query {
+    for (entity, ptype, mut velocity, mut position) in query {
         let my_type = *ptype;
         let my_index = entity.index();
 
-        let chunk_x = (transform.translation.x / config.d3) as i32;
-        let chunk_y = (transform.translation.y / config.d3) as i32;
+        #[allow(clippy::cast_possible_truncation)]
+        let chunk_x = (position.value.x / config.d3) as i32;
+        #[allow(clippy::cast_possible_truncation)]
+        let chunk_y = (position.value.y / config.d3) as i32;
 
-        let mut components: Vec<(Entity, ParticleType, Transform)> = Vec::with_capacity(1000);
+        let mut components: ParticleChunk = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
             for y in chunk_y - 1..=chunk_y + 1 {
                 chunk
@@ -377,9 +590,9 @@ fn update_particle(
         let acceleration = components
             .iter()
             .filter(|(other_entity, _, _)| other_entity.index() != my_index)
-            .fold(Vec3::default(), |acc, (_, p, t)| {
-                let distance = transform.translation.distance(t.translation);
-                let direction = (t.translation - transform.translation) / distance;
+            .fold(Vec3::default(), |acc, (_, p, pos)| {
+                let distance = position.value.distance(pos.value);
+                let direction = (pos.value - position.value) / distance;
 
                 if distance < config.d1 {
                     let actual_acceleration =
@@ -404,27 +617,52 @@ fn update_particle(
         velocity.value += acceleration * config.dt;
         velocity.value *= config.temperature.powf(config.dt);
 
-        transform.translation += velocity.value * config.dt;
+        position.value += velocity.value * config.dt;
 
         let half_width = config.map_width / 2.0;
         let half_height = config.map_height / 2.0;
 
-        if transform.translation.x < -half_width {
-            transform.translation.x = -half_width;
+        if position.value.x < -half_width {
+            position.value.x = -half_width;
             velocity.value.x *= -1.0;
-        } else if transform.translation.x > half_width {
-            transform.translation.x = half_width;
+        } else if position.value.x > half_width {
+            position.value.x = half_width;
             velocity.value.x *= -1.0;
-        } else if transform.translation.y < -half_height {
-            transform.translation.y = -half_height;
+        } else if position.value.y < -half_height {
+            position.value.y = -half_height;
             velocity.value.y *= -1.0;
-        } else if transform.translation.y > half_height {
-            transform.translation.y = half_height;
+        } else if position.value.y > half_height {
+            position.value.y = half_height;
             velocity.value.y *= -1.0;
         }
     }
 }
 
+/// Sync particle positions to transform for rendering
+///
+/// This system copies the physics `Position` component to the
+/// rendering `Transform` component. This allows the physics system
+/// to update positions independently from the rendering system.
+///
+/// This system runs every frame to ensure particles are rendered
+/// at their current physics positions.
+fn sync_transform(mut query: Query<(&Position, &mut Transform), With<ParticleMarker>>) {
+    for (position, mut transform) in &mut query {
+        transform.translation = position.value;
+    }
+}
+
+/// Spawn initial particles according to configuration
+///
+/// Creates the specified number of particles with random positions
+/// and types within the map boundaries.
+///
+/// # Arguments
+/// - `commands`: Bevy command queue
+/// - `meshes`: Mesh assets resource
+/// - `material`: Material assets resource
+/// - `config`: Particle configuration with spawn parameters
+#[allow(clippy::needless_pass_by_value)]
 pub fn spawn_particle(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -449,6 +687,9 @@ pub fn spawn_particle(
     }
 }
 
+/// Remove all particles from the simulation
+///
+/// Despawns all entities with the [`ParticleMarker`] component.
 pub fn clean_particle(mut commands: Commands, query: Query<Entity, With<ParticleMarker>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
@@ -456,6 +697,17 @@ pub fn clean_particle(mut commands: Commands, query: Query<Entity, With<Particle
     bevy::log::info!("Cleaned all particles");
 }
 
+/// Setup function that runs once at startup
+///
+/// 1. Loads particle interactions from CSV file (if present)
+/// 2. Spawns initial particles according to configuration
+///
+/// # Arguments
+/// - `commands`: Bevy command queue
+/// - `meshes`: Mesh assets resource
+/// - `material`: Material assets resource
+/// - `interaction_table`: Interaction table resource to populate
+/// - `config`: Particle configuration with spawn parameters
 fn setup(
     commands: Commands,
     meshes: ResMut<Assets<Mesh>>,
@@ -478,9 +730,16 @@ fn setup(
         }
     }
 
-    spawn_particle(commands, meshes, material, config)
+    spawn_particle(commands, meshes, material, config);
 }
 
+/// Respawn particles when requested
+///
+/// Removes all existing particles and spawns a new set
+/// according to current configuration.
+///
+/// This is triggered by the `respawn_particle` console command.
+#[allow(clippy::needless_pass_by_value)]
 fn respawn_particle(
     mut commands: Commands,
     query: Query<Entity, With<ParticleMarker>>,
@@ -492,13 +751,13 @@ fn respawn_particle(
 ) {
     if input_focus.is_game() && keys.just_pressed(KeyCode::KeyR) {
         clean_particle(commands.reborrow(), query);
-        spawn_particle(commands, meshes, meterial, config)
+        spawn_particle(commands, meshes, meterial, config);
     }
 }
 
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(self.config.to_owned());
+        app.insert_resource(self.config.clone());
         app.insert_resource(ParticleUpdateToggle::default());
         app.add_systems(Startup, setup);
         app.add_systems(Update, toggle_particle_update);
@@ -506,6 +765,7 @@ impl Plugin for ParticlePlugin {
             Update,
             update_particle.run_if(|toggle: Res<ParticleUpdateToggle>| toggle.enabled),
         );
+        app.add_systems(Update, sync_transform);
         app.add_systems(Update, respawn_particle);
     }
 }
