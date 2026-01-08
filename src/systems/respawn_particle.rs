@@ -60,7 +60,7 @@ pub fn spawn_particle(
     mut material: ResMut<Assets<ColorMaterial>>,
     config: Res<ParticleConfig>,
 ) {
-    let particle_types = [ParticleType::Red, ParticleType::Blue, ParticleType::Green];
+    let particle_types = ParticleType::all_types();
 
     for _ in 0..config.init_particle_num {
         let x = rand::random_range(-config.map_width / 2.0..config.map_width / 2.0);

@@ -10,7 +10,6 @@
 //! - Transform for rendering
 
 use crate::components::{ParticleMarker, ParticleType, Position, Velocity};
-use bevy::color::palettes::tailwind::{BLUE_500, GREEN_500, RED_500};
 use bevy::prelude::*;
 use bevy::sprite_render::{ColorMaterial, MeshMaterial2d};
 
@@ -64,17 +63,7 @@ impl Particle {
             velocity: Velocity::new(Vec3::default()),
             position: Position::new(transform.translation),
             mesh: Mesh2d(meshes.add(Circle::new(10.0))),
-            material: match particle_type {
-                ParticleType::Red => {
-                    MeshMaterial2d(material.add(ColorMaterial::from_color(RED_500)))
-                }
-                ParticleType::Blue => {
-                    MeshMaterial2d(material.add(ColorMaterial::from_color(BLUE_500)))
-                }
-                ParticleType::Green => {
-                    MeshMaterial2d(material.add(ColorMaterial::from_color(GREEN_500)))
-                }
-            },
+            material: MeshMaterial2d(material.add(ColorMaterial::from_color(particle_type.to_color()))),
             transform,
         });
     }

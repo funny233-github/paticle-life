@@ -176,28 +176,20 @@ impl ParticleInteractionTable {
     /// Outputs a formatted table showing all interaction forces
     /// between particle types.
     pub fn print_table(&self) {
-        bevy::log::info!(
-            "       {:>8} {:>8} {:>8}",
-            ParticleType::Red.as_str(),
-            ParticleType::Blue.as_str(),
-            ParticleType::Green.as_str()
-        );
-        bevy::log::info!(
-            "       {:>8} {:>8} {:>8}",
-            "--------",
-            "--------",
-            "--------"
-        );
+        // Print header with source particle types
+        bevy::log::debug!("       {}", ParticleType::all_types().iter().map(|t| format!("{:>8}", t.as_str())).collect::<Vec<_>>().join(" "));
+        bevy::log::debug!("       {}", ParticleType::all_types().iter().map(|_| format!("{:>8}", "--------")).collect::<Vec<_>>().join(" "));
 
+        // Print each row with target particle type and interaction values
         for target in ParticleType::all_types() {
-            bevy::log::debug!("{:<6} |", target.as_str());
+            let mut row = format!("{:<6} |", target.as_str());
             for source in ParticleType::all_types() {
                 let value = self.get_interaction(target, source);
-                bevy::log::debug!(" {:>8.1}", value);
+                row.push_str(&format!(" {:>8.1}", value));
             }
-            bevy::log::debug!("");
+            bevy::log::debug!("{}", row);
         }
-        bevy::log::info!("");
+        bevy::log::debug!("");
     }
 
     /// Returns a reference to the underlying interaction matrix
