@@ -409,18 +409,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy-game-test"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_console",
- "clap",
- "csv",
- "rand",
- "serde",
-]
-
-[[package]]
 name = "bevy_a11y"
 version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3862,6 +3850,18 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "particle-life"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_console",
+ "clap",
+ "csv",
+ "rand",
+ "serde",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite_render::Wireframe2dPlugin;
 use bevy_console::{ConsoleConfiguration, ConsolePlugin};
-use bevy_game_test::{
+use particle_life::{
     CameraMovePlugin, CommandPlugin, InputFocusPlugin, ParticlePlugin, resources::*,
 };
 
