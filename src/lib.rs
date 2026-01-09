@@ -99,8 +99,8 @@ enum SetSubcommand {
     D3 { value: f32 },
     /// Set the repel force magnitude for collision
     RepelForce { value: f32 },
-    /// Set temperature coefficient for velocity damping
-    Temperature { value: f32 },
+    /// Set half life period of velocity
+    DTHalf { value: f32 },
     /// Set the time step for particle updates
     Dt { value: f32 },
     /// Set the initial number of particles to spawn
@@ -148,9 +148,9 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
                 config.repel_force = value;
                 reply!(log, "set repel_force to {:.2} successfully", value);
             }
-            SetSubcommand::Temperature { value } => {
-                config.temperature = value;
-                reply!(log, "set temperature to {:.3} successfully", value);
+            SetSubcommand::DTHalf { value } => {
+                config.dt_half = value;
+                reply!(log, "set dt_half to {:.3} successfully", value);
             }
             SetSubcommand::Dt { value } => {
                 config.dt = value;
@@ -227,7 +227,7 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                 reply!(log, "repel_force: {:.2}", config.repel_force);
             }
             PrintTarget::Temperature => {
-                reply!(log, "temperature: {:.3}", config.temperature);
+                reply!(log, "dt_half: {:.3}", config.dt_half);
             }
             PrintTarget::Dt => {
                 reply!(log, "dt: {:.3}", config.dt);
@@ -252,7 +252,7 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                     config.d2,
                     config.d3,
                     config.repel_force,
-                    config.temperature,
+                    config.dt_half,
                     config.dt
                 );
             }
@@ -421,7 +421,7 @@ impl Plugin for CommandPlugin {
 /// - `update_particle` (Update, conditional): Updates particle physics
 /// - `sync_transform` (Update): Syncs Position to Transform for rendering
 /// - `respawn_particle` (Update): Respawns particles when requested
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ParticlePlugin {
     /// Configuration for the particle system
     pub config: ParticleConfig,

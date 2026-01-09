@@ -1,12 +1,15 @@
 //! Particle type component
 
+use bevy::color::Color;
+use bevy::color::palettes::tailwind::{
+    AMBER_500, BLUE_500, CYAN_500, EMERALD_500, FUCHSIA_500, GREEN_500, INDIGO_500, LIME_500,
+    ORANGE_500, PINK_500, PURPLE_500, RED_500, ROSE_500, SKY_500, TEAL_500, VIOLET_500, YELLOW_500,
+};
+use bevy::ecs::component::Component;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
-use bevy::color::Color;
-use bevy::color::palettes::tailwind::*;
-use bevy::ecs::component::Component;
 
 /// Type of particle in the simulation
 ///

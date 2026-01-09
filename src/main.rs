@@ -45,15 +45,7 @@ fn main() {
             InputFocusPlugin,
             CommandPlugin,
             CameraMovePlugin,
-            ParticlePlugin {
-                config: ParticleConfig {
-                    init_particle_num: 6000,
-                    map_width: 7608.0,
-                    map_height: 3909.0,
-
-                    ..Default::default()
-                },
-            },
+            ParticlePlugin::default(),
         ))
         .insert_resource(ParticleInteractionTable::new())
         .insert_resource(ConsoleConfiguration {

@@ -4,6 +4,7 @@
 
 use crate::components::ParticleType;
 use bevy::ecs::resource::Resource;
+use std::fmt::Write;
 use std::str::FromStr;
 
 /// Particle interaction table
@@ -177,15 +178,29 @@ impl ParticleInteractionTable {
     /// between particle types.
     pub fn print_table(&self) {
         // Print header with source particle types
-        bevy::log::debug!("       {}", ParticleType::all_types().iter().map(|t| format!("{:>8}", t.as_str())).collect::<Vec<_>>().join(" "));
-        bevy::log::debug!("       {}", ParticleType::all_types().iter().map(|_| format!("{:>8}", "--------")).collect::<Vec<_>>().join(" "));
+        bevy::log::debug!(
+            "       {}",
+            ParticleType::all_types()
+                .iter()
+                .map(|t| format!("{:>8}", t.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        bevy::log::debug!(
+            "       {}",
+            ParticleType::all_types()
+                .iter()
+                .map(|_| format!("{:>8}", "--------"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
 
         // Print each row with target particle type and interaction values
         for target in ParticleType::all_types() {
             let mut row = format!("{:<6} |", target.as_str());
             for source in ParticleType::all_types() {
                 let value = self.get_interaction(target, source);
-                row.push_str(&format!(" {:>8.1}", value));
+                let _ = write!(row, "{value:>8.1}");
             }
             bevy::log::debug!("{}", row);
         }
@@ -199,7 +214,9 @@ impl ParticleInteractionTable {
     }
 
     /// Returns a mutable reference to the underlying interaction matrix
-    pub const fn as_matrix_mut(&mut self) -> &mut [[f32; ParticleType::COUNT]; ParticleType::COUNT] {
+    pub const fn as_matrix_mut(
+        &mut self,
+    ) -> &mut [[f32; ParticleType::COUNT]; ParticleType::COUNT] {
         &mut self.interactions
     }
 }

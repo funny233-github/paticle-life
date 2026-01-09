@@ -25,27 +25,27 @@ pub struct ParticleConfig {
     pub d3: f32,
     /// Force magnitude for collision repulsion
     pub repel_force: f32,
-    /// Temperature coefficient for velocity damping (friction)
-    pub temperature: f32,
     /// Time step for physics updates
     pub dt: f32,
+    /// The half life period of velocity
+    pub dt_half: f32,
 }
 
 impl Default for ParticleConfig {
     fn default() -> Self {
         Self {
             init_particle_num: 1000,
-            map_width: 1000.0,
-            map_height: 1000.0,
+            map_width: 7608.0,
+            map_height: 3909.0,
 
-            d1: 30.0,
-            d2: 65.0,
-            d3: 100.0,
+            d1: 30.0 * 3.0,
+            d2: 65.0 * 3.0,
+            d3: 100.0 * 3.0,
 
             repel_force: -100.0,
-            temperature: 0.1,
 
-            dt: 0.1,
+            dt: 0.005,
+            dt_half: 5.0,
         }
     }
 }

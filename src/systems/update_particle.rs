@@ -83,7 +83,7 @@ pub fn update_particle(
                 let distance_factor = if distance >= config.d2 {
                     (config.d3 - distance) / (config.d3 - config.d2)
                 } else {
-                    (distance - config.d1) / config.d1
+                    (distance - config.d1) / (config.d2 - config.d1)
                 };
 
                 let other_type = *p;
@@ -93,8 +93,8 @@ pub fn update_particle(
                 acc + actual_acceleration
             });
 
+        velocity.value *= 0.5f32.powf(config.dt / config.dt_half);
         velocity.value += acceleration * config.dt;
-        velocity.value *= config.temperature.powf(config.dt);
 
         position.value += velocity.value * config.dt;
 
