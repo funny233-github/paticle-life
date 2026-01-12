@@ -31,8 +31,8 @@ impl Default for ParticleConfig {
     fn default() -> Self {
         Self {
             init_particle_num: 5000,
-            map_width: 7608.0,
-            map_height: 3909.0,
+            map_width: 2000.0,
+            map_height: 2000.0,
 
             r: 100.0,
 
