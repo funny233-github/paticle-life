@@ -62,8 +62,10 @@ impl Particle {
             particle_type,
             velocity: Velocity::new(Vec3::default()),
             position: Position::new(transform.translation),
-            mesh: Mesh2d(meshes.add(Circle::new(10.0))),
-            material: MeshMaterial2d(material.add(ColorMaterial::from_color(particle_type.to_color()))),
+            mesh: Mesh2d(meshes.add(Circle::new(5.0))),
+            material: MeshMaterial2d(
+                material.add(ColorMaterial::from_color(particle_type.to_color())),
+            ),
             transform,
         });
     }

@@ -39,9 +39,9 @@ pub fn update_particle(
     let mut chunk: HashMap<(i32, i32), ParticleChunk> = HashMap::with_capacity(1000);
     for (entity, ptype, _, pos) in query.iter() {
         #[allow(clippy::cast_possible_truncation)]
-        let x = (pos.value.x / config.d3) as i32;
+        let x = (pos.value.x / config.r) as i32;
         #[allow(clippy::cast_possible_truncation)]
-        let y = (pos.value.y / config.d3) as i32;
+        let y = (pos.value.y / config.r) as i32;
         chunk
             .entry((x, y))
             .and_modify(|inner| inner.push((entity, ptype.to_owned(), pos.to_owned())))
@@ -53,9 +53,9 @@ pub fn update_particle(
         let my_index = entity.index();
 
         #[allow(clippy::cast_possible_truncation)]
-        let chunk_x = (position.value.x / config.d3) as i32;
+        let chunk_x = (position.value.x / config.r) as i32;
         #[allow(clippy::cast_possible_truncation)]
-        let chunk_y = (position.value.y / config.d3) as i32;
+        let chunk_y = (position.value.y / config.r) as i32;
 
         let mut components: ParticleChunk = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
@@ -70,21 +70,25 @@ pub fn update_particle(
             .iter()
             .filter(|(other_entity, _, _)| other_entity.index() != my_index)
             .fold(Vec3::default(), |acc, (_, p, pos)| {
+                let b = 0.35;
+                let d1 = config.r * b;
+                let d2 = config.r * (1.0 - b) / 2.0;
+                let d3 = config.r;
                 let distance = position.value.distance(pos.value);
                 let direction = (pos.value - position.value) / distance;
+                let distance_factor;
 
-                if distance < config.d1 {
-                    let actual_acceleration =
-                        direction * config.repel_force * (config.d1 - distance);
+                if distance < d1 {
+                    distance_factor = (distance - d1) / d1;
+                    let actual_acceleration = direction * distance_factor;
                     return acc + actual_acceleration;
-                } else if distance >= config.d3 {
+                } else if distance >= d3 {
                     return acc;
-                }
-                let distance_factor = if distance >= config.d2 {
-                    (config.d3 - distance) / (config.d3 - config.d2)
+                } else if distance >= d2 {
+                    distance_factor = (d3 - distance) / (d3 - d2);
                 } else {
-                    (distance - config.d1) / (config.d2 - config.d1)
-                };
+                    distance_factor = (distance - d1) / (d2 - d1);
+                }
 
                 let other_type = *p;
                 let strength = interaction_table.get_interaction(my_type, other_type);
@@ -101,18 +105,7 @@ pub fn update_particle(
         let half_width = config.map_width / 2.0;
         let half_height = config.map_height / 2.0;
 
-        if position.value.x < -half_width {
-            position.value.x = -half_width;
-            velocity.value.x *= -1.0;
-        } else if position.value.x > half_width {
-            position.value.x = half_width;
-            velocity.value.x *= -1.0;
-        } else if position.value.y < -half_height {
-            position.value.y = -half_height;
-            velocity.value.y *= -1.0;
-        } else if position.value.y > half_height {
-            position.value.y = half_height;
-            velocity.value.y *= -1.0;
-        }
+        position.value.x = position.value.x.clamp(-half_width, half_width);
+        position.value.y = position.value.y.clamp(-half_height, half_height);
     }
 }

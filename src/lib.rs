@@ -91,12 +91,8 @@ impl Plugin for InputFocusPlugin {
 enum SetSubcommand {
     /// Set map boundary dimensions
     Boundary { width: f32, height: f32 },
-    /// Set d1 distance value (collision distance)
-    D1 { value: f32 },
-    /// Set d2 distance value (interaction transition start)
-    D2 { value: f32 },
-    /// Set d3 distance value (interaction max distance and chunk size)
-    D3 { value: f32 },
+    /// Set interaction distance
+    R { value: f32 },
     /// Set the repel force magnitude for collision
     RepelForce { value: f32 },
     /// Set half life period of velocity
@@ -132,17 +128,9 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
                     height
                 );
             }
-            SetSubcommand::D1 { value } => {
-                config.d1 = value;
-                reply!(log, "set d1 to {:.2} successfully", value);
-            }
-            SetSubcommand::D2 { value } => {
-                config.d2 = value;
-                reply!(log, "set d2 to {:.2} successfully", value);
-            }
-            SetSubcommand::D3 { value } => {
-                config.d3 = value;
-                reply!(log, "set d3 to {:.2} successfully", value);
+            SetSubcommand::R { value } => {
+                config.r = value;
+                reply!(log, "set r to {:.2} successfully", value);
             }
             SetSubcommand::RepelForce { value } => {
                 config.repel_force = value;
@@ -168,7 +156,7 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PrintTarget {
     Boundary,
-    D,
+    R,
     RepelForce,
     Temperature,
     Dt,
@@ -181,12 +169,12 @@ impl std::str::FromStr for PrintTarget {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "boundary" => Ok(Self::Boundary),
-            "d" => Ok(Self::D),
+            "r" => Ok(Self::R),
             "repel_force" => Ok(Self::RepelForce),
             "temperature" => Ok(Self::Temperature),
             "dt" => Ok(Self::Dt),
             "config" => Ok(Self::Config),
-            _ => Err("Invalid print target. Valid options: boundary, d, repel_force, temperature, dt, config".to_string()),
+            _ => Err("Invalid print target. Valid options: boundary, r, repel_force, temperature, dt, config".to_string()),
         }
     }
 }
@@ -195,7 +183,7 @@ impl std::str::FromStr for PrintTarget {
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "print")]
 struct PrintCommand {
-    /// What to print: boundary, d, `repel_force`, temperature, dt, or config
+    /// What to print: boundary, r, `repel_force`, temperature, dt, or config
     target: PrintTarget,
 }
 
@@ -214,14 +202,8 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                     config.map_height
                 );
             }
-            PrintTarget::D => {
-                reply!(
-                    log,
-                    "d1: {:.2}, d2: {:.2}, d3: {:.2}",
-                    config.d1,
-                    config.d2,
-                    config.d3
-                );
+            PrintTarget::R => {
+                reply!(log, "r: {:.2}", config.r);
             }
             PrintTarget::RepelForce => {
                 reply!(log, "repel_force: {:.2}", config.repel_force);
@@ -239,18 +221,14 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                      - init_particle_num: {}\n\
                      - map_width: {:.2}\n\
                      - map_height: {:.2}\n\
-                     - d1 (collision): {:.2}\n\
-                     - d2 (transition): {:.2}\n\
-                     - d3 (max_distance): {:.2}\n\
+                     - r: {:.2}\n\
                      - repel_force: {:.2}\n\
                      - temperature: {:.3}\n\
                      - dt: {:.3}",
                     config.init_particle_num,
                     config.map_width,
                     config.map_height,
-                    config.d1,
-                    config.d2,
-                    config.d3,
+                    config.r,
                     config.repel_force,
                     config.dt_half,
                     config.dt
@@ -351,7 +329,7 @@ fn random_interaction(
     if matches!(log.take(), Some(Ok(RandomInteractionCommand))) {
         for target in ParticleType::all_types() {
             for source in ParticleType::all_types() {
-                let value = rand::random_range(-100.0..100.0);
+                let value = rand::random_range(-1.0..1.0);
                 interaction_table.set_interaction(target, source, value);
             }
         }
