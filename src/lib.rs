@@ -152,49 +152,46 @@ fn set(mut log: ConsoleCommand<SetCommand>, mut config: ResMut<ParticleConfig>) 
     }
 }
 
-/// Target parameter for the `print` console command
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PrintTarget {
+/// Subcommands for the `print` console command
+#[derive(Subcommand, Clone, PartialEq)]
+enum PrintSubcommand {
+    /// Print map boundary dimensions
     Boundary,
+    /// Print particle interaction table
+    Interaction,
+    /// Print interaction distance
     R,
+    /// Print repel force magnitude for collisions
     RepelForce,
+    /// Print half-life period of velocity
     Temperature,
+    /// Print time step for particle updates
     Dt,
+    /// Print all configuration values
     Config,
-}
-
-impl std::str::FromStr for PrintTarget {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "boundary" => Ok(Self::Boundary),
-            "r" => Ok(Self::R),
-            "repel_force" => Ok(Self::RepelForce),
-            "temperature" => Ok(Self::Temperature),
-            "dt" => Ok(Self::Dt),
-            "config" => Ok(Self::Config),
-            _ => Err("Invalid print target. Valid options: boundary, r, repel_force, temperature, dt, config".to_string()),
-        }
-    }
 }
 
 /// Console command for printing current configuration values
 #[derive(Parser, ConsoleCommand)]
 #[command(name = "print")]
 struct PrintCommand {
-    /// What to print: boundary, r, `repel_force`, temperature, dt, or config
-    target: PrintTarget,
+    #[command(subcommand)]
+    subcommand: PrintSubcommand,
 }
 
 /// Handle the `print` console command
 ///
 /// Displays the current value of the specified configuration parameter.
 #[allow(clippy::needless_pass_by_value)]
-fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
-    if let Some(Ok(PrintCommand { target })) = log.take() {
-        match target {
-            PrintTarget::Boundary => {
+fn print(
+    mut log: ConsoleCommand<PrintCommand>,
+    config: Res<ParticleConfig>,
+    interaction_table: Res<ParticleInteractionTable>,
+) {
+    use std::fmt::Write;
+    if let Some(Ok(PrintCommand { subcommand })) = log.take() {
+        match subcommand {
+            PrintSubcommand::Boundary => {
                 reply!(
                     log,
                     "map width: {:.2}, height: {:.2}",
@@ -202,19 +199,39 @@ fn print(mut log: ConsoleCommand<PrintCommand>, config: Res<ParticleConfig>) {
                     config.map_height
                 );
             }
-            PrintTarget::R => {
+            PrintSubcommand::Interaction => {
+                let types = ParticleType::all_types();
+                let mut output = String::from("Particle Interaction Table:\n");
+                write!(output, "{:>8} ", "target\\source").unwrap();
+                for source_type in &types {
+                    write!(output, "{:>6} ", source_type.as_str()).unwrap();
+                }
+                output.push('\n');
+
+                for target_type in &types {
+                    write!(output, "{:>8} ", target_type.as_str()).unwrap();
+                    for source_type in &types {
+                        let strength =
+                            interaction_table.get_interaction(*target_type, *source_type);
+                        write!(output, "{strength:>6.1} ").unwrap();
+                    }
+                    output.push('\n');
+                }
+                reply!(log, "{}", output);
+            }
+            PrintSubcommand::R => {
                 reply!(log, "r: {:.2}", config.r);
             }
-            PrintTarget::RepelForce => {
+            PrintSubcommand::RepelForce => {
                 reply!(log, "repel_force: {:.2}", config.repel_force);
             }
-            PrintTarget::Temperature => {
+            PrintSubcommand::Temperature => {
                 reply!(log, "dt_half: {:.3}", config.dt_half);
             }
-            PrintTarget::Dt => {
+            PrintSubcommand::Dt => {
                 reply!(log, "dt: {:.3}", config.dt);
             }
-            PrintTarget::Config => {
+            PrintSubcommand::Config => {
                 reply!(
                     log,
                     "ParticleConfig:\n\
