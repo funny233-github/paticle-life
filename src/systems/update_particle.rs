@@ -39,9 +39,9 @@ pub fn update_particle(
     let mut chunk: HashMap<(i32, i32), ParticleChunk> = HashMap::with_capacity(1000);
     for (entity, ptype, _, pos) in query.iter() {
         #[allow(clippy::cast_possible_truncation)]
-        let x = (pos.value.x / config.r) as i32;
+        let x = (pos.value.x / config.r).floor() as i32;
         #[allow(clippy::cast_possible_truncation)]
-        let y = (pos.value.y / config.r) as i32;
+        let y = (pos.value.y / config.r).floor() as i32;
         chunk
             .entry((x, y))
             .and_modify(|inner| inner.push((entity, ptype.to_owned(), pos.to_owned())))
@@ -53,9 +53,9 @@ pub fn update_particle(
         let my_index = entity.index();
 
         #[allow(clippy::cast_possible_truncation)]
-        let chunk_x = (position.value.x / config.r) as i32;
+        let chunk_x = (position.value.x / config.r).floor() as i32;
         #[allow(clippy::cast_possible_truncation)]
-        let chunk_y = (position.value.y / config.r) as i32;
+        let chunk_y = (position.value.y / config.r).floor() as i32;
 
         let mut components: ParticleChunk = Vec::with_capacity(1000);
         for x in chunk_x - 1..=chunk_x + 1 {
@@ -80,7 +80,7 @@ pub fn update_particle(
 
                 if distance < d1 {
                     distance_factor = (distance - d1) / d1;
-                    let actual_acceleration = direction * distance_factor;
+                    let actual_acceleration = direction * distance_factor * config.repel_force;
                     return acc + actual_acceleration;
                 } else if distance >= d3 {
                     return acc;
@@ -100,12 +100,20 @@ pub fn update_particle(
         velocity.value *= 0.5f32.powf(config.dt / config.dt_half);
         velocity.value += acceleration * config.dt;
 
-        position.value += velocity.value * config.dt;
-
         let half_width = config.map_width / 2.0;
         let half_height = config.map_height / 2.0;
 
-        position.value.x = position.value.x.clamp(-half_width, half_width);
-        position.value.y = position.value.y.clamp(-half_height, half_height);
+        if (position.value.x > half_width && velocity.value.x > 0.0)
+            || (position.value.x < -half_width && velocity.value.x < 0.0)
+        {
+            velocity.value.x = -velocity.value.x;
+        }
+        if (position.value.y > half_height && velocity.value.y > 0.0)
+            || (position.value.y < -half_height && velocity.value.y < 0.0)
+        {
+            velocity.value.y = -velocity.value.y;
+        }
+
+        position.value += velocity.value * config.dt;
     }
 }

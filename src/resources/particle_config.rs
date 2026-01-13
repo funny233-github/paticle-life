@@ -30,15 +30,15 @@ pub struct ParticleConfig {
 impl Default for ParticleConfig {
     fn default() -> Self {
         Self {
-            init_particle_num: 5000,
+            init_particle_num: 2000,
             map_width: 2000.0,
             map_height: 2000.0,
 
-            r: 100.0,
+            r: 300.0,
 
-            repel_force: -1.0,
+            repel_force: 1.0,
 
-            dt: 0.5,
+            dt: 1.0,
             dt_half: 1.0,
         }
     }
