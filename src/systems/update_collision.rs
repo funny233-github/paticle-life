@@ -1,54 +1,46 @@
-use crate::components::{Collision, ParticleMarker, Position};
+use crate::components::{Collision, ParticleMarker, ParticleType, Position};
 use crate::resources::ParticleConfig;
 use bevy::prelude::*;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// TODO doc
 pub fn update_collision(
-    mut query: Query<(Entity, &Position, &mut Collision), With<ParticleMarker>>,
+    mut query: Query<(Entity, &ParticleType, &Position, &mut Collision), With<ParticleMarker>>,
     config: Res<ParticleConfig>,
 ) {
     // Estimate capacity based on map size and particle radius
-    let estimated_chunks = ((config.map_width / config.r) * (config.map_height / config.r)) as usize;
-    let mut chunk: HashMap<(i32, i32), Vec<Entity>> = HashMap::with_capacity(estimated_chunks.max(1000));
+    let mut chunk: HashMap<(i32, i32), Vec<_>> = HashMap::with_capacity(1000);
 
     // First pass: build spatial partition
-    for (entity, pos, _) in query.iter() {
+    for (entity, ptype, pos, _) in query.iter() {
         #[allow(clippy::cast_possible_truncation)]
         let x = (pos.value.x / config.r).floor() as i32;
         #[allow(clippy::cast_possible_truncation)]
         let y = (pos.value.y / config.r).floor() as i32;
         chunk
             .entry((x, y))
-            .and_modify(|inner| inner.push(entity))
-            .or_insert_with(|| vec![entity]);
+            .and_modify(|inner| inner.push((entity, *ptype, *pos)))
+            .or_insert_with(|| vec![(entity, *ptype, *pos)]);
     }
 
     // Second pass: assign neighboring entities to each particle
-    for (_, pos, mut col) in &mut query {
+    for (entity, _, pos, mut col) in &mut query {
         #[allow(clippy::cast_possible_truncation)]
         let chunk_x = (pos.value.x / config.r).floor() as i32;
         #[allow(clippy::cast_possible_truncation)]
         let chunk_y = (pos.value.y / config.r).floor() as i32;
 
-        // Clear previous collision entities
-        if let Some(entities) = Arc::get_mut(&mut col.collision_entitys) {
-            entities.clear();
-        }
+        col.collision_entities = Vec::with_capacity(1000);
 
         // Collect entities from 3x3 surrounding chunks
         for x in chunk_x - 1..=chunk_x + 1 {
             for y in chunk_y - 1..=chunk_y + 1 {
                 if let Some(neighbors) = chunk.get(&(x, y)) {
-                    if let Some(entities) = Arc::get_mut(&mut col.collision_entitys) {
-                        entities.extend(neighbors.iter().copied());
-                    } else {
-                        // Fallback: Arc has multiple references, create new one
-                        let mut new_entities = col.collision_entitys.as_ref().to_vec();
-                        new_entities.extend(neighbors.iter().copied());
-                        col.collision_entitys = Arc::new(new_entities);
-                    }
+                    col.collision_entities.extend(
+                        neighbors
+                            .iter()
+                            .filter(|(e, _, _)| e.index() != entity.index()),
+                    );
                 }
             }
         }

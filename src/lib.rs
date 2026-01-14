@@ -11,7 +11,7 @@
 //! - Input focus management for game vs console input
 //! - Camera movement controls
 
-#![forbid(missing_docs, unsafe_code)]
+#![forbid(missing_docs)]
 #![warn(
     clippy::all,
     clippy::nursery,
