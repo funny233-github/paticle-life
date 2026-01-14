@@ -9,7 +9,7 @@
 //! - Material for rendering
 //! - Transform for rendering
 
-use crate::components::{ParticleMarker, ParticleType, Position, Velocity};
+use crate::components::{Collision, ParticleMarker, ParticleType, Position, Velocity};
 use bevy::prelude::*;
 use bevy::sprite_render::{ColorMaterial, MeshMaterial2d};
 
@@ -33,6 +33,8 @@ pub struct Particle {
     pub velocity: Velocity,
     /// Position for physics (separate from Transform)
     pub position: Position,
+    /// Collision for physics
+    pub collision: Collision,
     /// 2D mesh for rendering
     pub mesh: Mesh2d,
     /// Material for rendering
@@ -62,6 +64,7 @@ impl Particle {
             particle_type,
             velocity: Velocity::new(Vec3::default()),
             position: Position::new(transform.translation),
+            collision: Collision::new(),
             mesh: Mesh2d(meshes.add(Circle::new(5.0))),
             material: MeshMaterial2d(
                 material.add(ColorMaterial::from_color(particle_type.to_color())),

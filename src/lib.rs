@@ -26,7 +26,7 @@ use crate::resources::{
 };
 use crate::systems::{
     clean_particle, move_camera, respawn_particle, setup, spawn_particle, sync_transform,
-    toggle_particle_update, update_input_focus, update_particle,
+    toggle_particle_update, update_collision, update_input_focus, update_particle,
 };
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::prelude::*;
@@ -430,7 +430,11 @@ impl Plugin for ParticlePlugin {
         app.add_systems(Update, toggle_particle_update);
         app.add_systems(
             Update,
-            update_particle.run_if(|toggle: Res<ParticleUpdateToggle>| toggle.is_enabled()),
+            (
+                update_collision,
+                update_particle.run_if(|toggle: Res<ParticleUpdateToggle>| toggle.is_enabled()),
+            )
+                .chain(),
         );
         app.add_systems(Update, sync_transform);
         app.add_systems(Update, respawn_particle);

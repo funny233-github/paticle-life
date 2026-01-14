@@ -11,12 +11,11 @@
 //! The `sync_transform` system will copy updated positions to the
 //! `Transform` component for rendering.
 
-use crate::components::{ParticleMarker, ParticleType, Position, Velocity};
+use crate::components::{Collision, ParticleMarker, ParticleType, Position, Velocity};
 use crate::resources::ParticleConfig;
 use crate::resources::ParticleInteractionTable;
-use crate::systems::ParticleChunk;
+use bevy::prelude::ParamSet;
 use bevy::prelude::*;
-use std::collections::HashMap;
 
 /// Update particle physics positions
 ///
@@ -32,50 +31,47 @@ use std::collections::HashMap;
 /// `Transform` component for rendering.
 #[allow(clippy::needless_pass_by_value)]
 pub fn update_particle(
-    query: Query<(Entity, &ParticleType, &mut Velocity, &mut Position), With<ParticleMarker>>,
+    mut query_set: ParamSet<(
+        Query<
+            (
+                Entity,
+                &ParticleType,
+                &mut Velocity,
+                &mut Position,
+                &Collision,
+            ),
+            With<ParticleMarker>,
+        >,
+        Query<(Entity, &ParticleType, &Position), With<ParticleMarker>>,
+    )>,
     interaction_table: Res<ParticleInteractionTable>,
     config: Res<ParticleConfig>,
 ) {
-    let mut chunk: HashMap<(i32, i32), ParticleChunk> = HashMap::with_capacity(1000);
-    for (entity, ptype, _, pos) in query.iter() {
-        #[allow(clippy::cast_possible_truncation)]
-        let x = (pos.value.x / config.r).floor() as i32;
-        #[allow(clippy::cast_possible_truncation)]
-        let y = (pos.value.y / config.r).floor() as i32;
-        chunk
-            .entry((x, y))
-            .and_modify(|inner| inner.push((entity, ptype.to_owned(), pos.to_owned())))
-            .or_insert_with(|| [(entity, ptype.to_owned(), pos.to_owned())].into());
+    use std::collections::HashMap;
+
+    // First pass: collect all read-only data into HashMap for O(1) lookup
+    let mut read_only_data: HashMap<Entity, (ParticleType, Position)> = HashMap::new();
+    for (entity, ptype, position) in query_set.p1().iter() {
+        read_only_data.insert(entity, (*ptype, *position));
     }
 
-    for (entity, ptype, mut velocity, mut position) in query {
+    // Second pass: update particles using the read-only data
+    for (entity, ptype, mut velocity, mut position, col) in &mut query_set.p0() {
         let my_type = *ptype;
         let my_index = entity.index();
 
-        #[allow(clippy::cast_possible_truncation)]
-        let chunk_x = (position.value.x / config.r).floor() as i32;
-        #[allow(clippy::cast_possible_truncation)]
-        let chunk_y = (position.value.y / config.r).floor() as i32;
-
-        let mut components: ParticleChunk = Vec::with_capacity(1000);
-        for x in chunk_x - 1..=chunk_x + 1 {
-            for y in chunk_y - 1..=chunk_y + 1 {
-                chunk
-                    .entry((x, y))
-                    .and_modify(|inner| components.append(inner.to_owned().as_mut()));
-            }
-        }
-
-        let acceleration = components
+        let acceleration = col
+            .collision_entitys
             .iter()
-            .filter(|(other_entity, _, _)| other_entity.index() != my_index)
-            .fold(Vec3::default(), |acc, (_, p, pos)| {
+            .filter(|other_entity| other_entity.index() != my_index)
+            .filter_map(|other_entity| read_only_data.get(other_entity))
+            .fold(Vec3::default(), |acc, (other_type, other_pos)| {
                 let b = 0.35;
                 let d1 = config.r * b;
                 let d2 = config.r * (1.0 - b) / 2.0;
                 let d3 = config.r;
-                let distance = position.value.distance(pos.value);
-                let direction = (pos.value - position.value) / distance;
+                let distance = position.value.distance(other_pos.value);
+                let direction = (other_pos.value - position.value) / distance;
                 let distance_factor;
 
                 if distance < d1 {
@@ -90,8 +86,7 @@ pub fn update_particle(
                     distance_factor = (distance - d1) / (d2 - d1);
                 }
 
-                let other_type = *p;
-                let strength = interaction_table.get_interaction(my_type, other_type);
+                let strength = interaction_table.get_interaction(my_type, *other_type);
                 let actual_acceleration = direction * strength * distance_factor;
 
                 acc + actual_acceleration

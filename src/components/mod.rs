@@ -2,11 +2,13 @@
 //!
 //! This module contains all Bevy components used in the game.
 
+mod collision;
 mod particle_marker;
 mod particle_type;
 mod position;
 mod velocity;
 
+pub use collision::Collision;
 pub use particle_marker::ParticleMarker;
 pub use particle_type::{ParticleType, ParticleTypeError};
 pub use position::Position;
